@@ -361,9 +361,29 @@
     <div class="grid-2">
       <div>
         <div class="section-label">Dados do processo</div>
-        <div id="det-dados" style="font-size:13px; line-height:1.9;"></div>
+        <div class="form-row">
+          <div><label>Nome completo do cliente</label><input id="det-nome"></div>
+          <div><label>CPF</label><input id="det-cpf"></div>
+        </div>
+        <div class="form-row">
+          <div><label>ADE do contrato</label><input id="det-ade"></div>
+          <div><label>Tribunal</label><input id="det-tribunal" placeholder="TJBA, TJSP, TRF1..."></div>
+        </div>
+        <div class="form-row">
+          <div><label>Banco</label><select id="det-banco" onchange="tratarNovoValorDominio('det-banco','BANCO')"></select></div>
+          <div><label>Convênio</label><select id="det-convenio" onchange="tratarNovoValorDominio('det-convenio','CONVENIO')"></select></div>
+        </div>
+        <div class="form-row">
+          <div><label>Tipo de operação</label><select id="det-operacao" onchange="tratarNovoValorDominio('det-operacao','OPERACAO')"></select></div>
+          <div><label>Motivo da ação</label><select id="det-motivo" onchange="tratarNovoValorDominio('det-motivo','MOTIVO')"></select></div>
+        </div>
+        <div class="form-row">
+          <div><label>Valor da operação (R$)</label><input id="det-valor-operacao" type="number" step="0.01"></div>
+          <div><label>Data da operação</label><input id="det-data-operacao" type="date"></div>
+        </div>
+        <div class="form-row single"><div><label>Data de ajuizamento</label><input id="det-data-ajuizamento" type="date"></div></div>
 
-        <div class="section-label">Atualizar risco / situação</div>
+        <div class="section-label">Risco e situação</div>
         <div class="form-row">
           <div><label>Classificação de risco</label>
             <select id="det-risco">
@@ -374,7 +394,7 @@
           <div><label>Valor em risco (R$)</label><input id="det-valor-risco" type="number" step="0.01"></div>
         </div>
         <div class="form-row single"><div><label>Situação atual</label><input id="det-situacao"></div></div>
-        <button class="btn-secondary" onclick="salvarAtualizacaoProcesso()">Salvar atualização</button>
+        <button class="btn-secondary" onclick="salvarAtualizacaoProcesso()">Salvar dados do processo</button>
 
         <div class="section-label">Nova tarefa de acompanhamento</div>
         <div class="form-row">
@@ -709,15 +729,19 @@ async function abrirDetalhe(id){
   processoAtualId = id;
   const p = processosCache.find(x=>x.id===id);
   document.getElementById('det-titulo').textContent = p.numero_processo;
-  document.getElementById('det-dados').innerHTML = `
-    <b>Cliente:</b> ${p.nome_cliente}<br>
-    <b>CPF:</b> ${p.cpf||'—'} &nbsp; <b>ADE:</b> ${p.ade||'—'}<br>
-    <b>Banco:</b> ${p.banco} &nbsp; <b>Tribunal:</b> ${p.tribunal||'—'}<br>
-    <b>Motivo:</b> ${p.motivo}<br>
-    <b>Convênio:</b> ${p.convenio||'—'} &nbsp; <b>Tipo de operação:</b> ${p.tipo_operacao||'—'}<br>
-    <b>Valor da operação:</b> ${fmtMoney(p.valor_operacao)} &nbsp; <b>Data operação:</b> ${fmtDate(p.data_operacao)}<br>
-    <b>Data de ajuizamento:</b> ${fmtDate(p.data_ajuizamento)}
-  `;
+
+  document.getElementById('det-nome').value = p.nome_cliente || '';
+  document.getElementById('det-cpf').value = p.cpf || '';
+  document.getElementById('det-ade').value = p.ade || '';
+  document.getElementById('det-tribunal').value = p.tribunal || '';
+  preencherSelectDominio('det-banco','BANCO', p.banco);
+  preencherSelectDominio('det-convenio','CONVENIO', p.convenio);
+  preencherSelectDominio('det-operacao','OPERACAO', p.tipo_operacao);
+  preencherSelectDominio('det-motivo','MOTIVO', p.motivo);
+  document.getElementById('det-valor-operacao').value = p.valor_operacao || '';
+  document.getElementById('det-data-operacao').value = p.data_operacao || '';
+  document.getElementById('det-data-ajuizamento').value = p.data_ajuizamento || '';
+
   document.getElementById('det-risco').value = p.classificacao_risco;
   document.getElementById('det-valor-risco').value = p.valor_risco || '';
   document.getElementById('det-situacao').value = p.situacao_atual || '';
@@ -731,14 +755,25 @@ async function abrirDetalhe(id){
 }
 
 async function salvarAtualizacaoProcesso(){
-  const risco = document.getElementById('det-risco').value;
-  const valorRisco = document.getElementById('det-valor-risco').value || null;
-  const situacao = document.getElementById('det-situacao').value.trim();
-  const { error } = await sb.from('processos_judiciais').update({
-    classificacao_risco: risco, valor_risco: valorRisco, situacao_atual: situacao
-  }).eq('id', processoAtualId);
+  const payload = {
+    nome_cliente: document.getElementById('det-nome').value.trim(),
+    cpf: document.getElementById('det-cpf').value.trim(),
+    ade: document.getElementById('det-ade').value.trim(),
+    tribunal: document.getElementById('det-tribunal').value.trim(),
+    banco: document.getElementById('det-banco').value,
+    convenio: document.getElementById('det-convenio').value || null,
+    tipo_operacao: document.getElementById('det-operacao').value || null,
+    motivo: document.getElementById('det-motivo').value,
+    valor_operacao: document.getElementById('det-valor-operacao').value || null,
+    data_operacao: document.getElementById('det-data-operacao').value || null,
+    data_ajuizamento: document.getElementById('det-data-ajuizamento').value || null,
+    classificacao_risco: document.getElementById('det-risco').value,
+    valor_risco: document.getElementById('det-valor-risco').value || null,
+    situacao_atual: document.getElementById('det-situacao').value.trim()
+  };
+  const { error } = await sb.from('processos_judiciais').update(payload).eq('id', processoAtualId);
   if(error){ toast('Erro: '+error.message); return; }
-  toast('Processo atualizado.');
+  toast('Dados do processo atualizados.');
   await carregarProcessos(); await carregarDashboard();
   abrirDetalhe(processoAtualId);
 }
