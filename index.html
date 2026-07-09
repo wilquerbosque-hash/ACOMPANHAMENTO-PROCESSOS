@@ -116,6 +116,11 @@
   .badge-PENDENTE{ background:#232320; color:var(--textSecondary); }
   .badge-ATRASADA{ background:var(--erroBg); color:var(--erro); }
   .badge-CONCLUIDA{ background:var(--sucessoBg); color:var(--sucesso); }
+  .badge-GANHO{ background:var(--sucessoBg); color:var(--sucesso); }
+  .badge-PERDIDO{ background:var(--erroBg); color:var(--erro); }
+  .badge-PARCIAL{ background:var(--alertaBg); color:var(--alerta); }
+  .badge-EM_ANDAMENTO{ background:#232320; color:var(--textSecondary); }
+  .banner-aviso{ background:var(--alertaBg); border:1px solid var(--alerta); color:var(--alerta); padding:12px 16px; border-radius:9px; font-size:13px; margin-bottom:18px; display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; }
 
   .filters{ display:flex; gap:10px; flex-wrap:wrap; margin-bottom:16px; }
   .filters select, .filters input{ margin-bottom:0; width:auto; min-width:150px; }
@@ -270,6 +275,7 @@
       <button data-view="dashboard" class="active" onclick="showView('dashboard')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px; margin-right:5px;"><rect x="3" y="3" width="8" height="8" rx="1"/><rect x="13" y="3" width="8" height="5" rx="1"/><rect x="13" y="12" width="8" height="9" rx="1"/><rect x="3" y="14" width="8" height="7" rx="1"/></svg>Dashboard</button>
       <button data-view="processos" onclick="showView('processos')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px; margin-right:5px;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>Processos</button>
       <button data-view="tarefas" onclick="showView('tarefas')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px; margin-right:5px;"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M3 10h18"/><path d="m9 16 2 2 4-4"/></svg>Acompanhamentos</button>
+      <button data-view="metricas" onclick="showView('metricas')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px; margin-right:5px;"><path d="M3 3v18h18"/><path d="M18 17V9M13 17v-5M8 17v-3"/></svg>Métricas</button>
       <button data-view="usuarios" id="nav-usuarios" style="display:none;" onclick="showView('usuarios')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px; margin-right:5px;"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 19c0-3.5 3-5.5 6.5-5.5s6.5 2 6.5 5.5"/><circle cx="18" cy="9" r="2.5"/><path d="M15.5 13.5c2.5.3 4 1.8 4 4.5"/></svg>Usuários</button>
     </nav>
     <div class="user-chip">
@@ -284,6 +290,7 @@
       <div class="page-head">
         <div><h2>Visão geral</h2><p>Exposição e andamento dos processos judiciais recepcionados</p></div>
       </div>
+      <div id="banner-mes-faltando"></div>
       <div class="cards-row" id="kpi-cards"></div>
       <div class="grid-2">
         <div class="panel">
@@ -298,6 +305,36 @@
       <div class="panel">
         <h3>Motivos das ações</h3>
         <div id="chart-por-motivo"></div>
+      </div>
+      <div class="panel">
+        <h3>Tempo médio entre celebração da operação e ajuizamento</h3>
+        <p style="font-size:12px; color:var(--textSecondary); margin:-6px 0 12px;">Quantos dias, em média, uma operação celebrada em cada mês leva para virar um processo judicial.</p>
+        <div class="table-wrap"><table id="tbl-cohort"><thead><tr><th>Mês da operação</th><th>Processos</th><th>Tempo médio até o ajuizamento</th></tr></thead><tbody></tbody></table></div>
+      </div>
+    </section>
+
+    <!-- ---------- MÉTRICAS MENSAIS ---------- -->
+    <section id="view-metricas" class="view">
+      <div class="page-head">
+        <div><h2>Métricas mensais</h2><p>Volume global de operações e quantas foram contestadas, mês a mês</p></div>
+        <button class="btn-secondary" onclick="abrirNovoMes()">+ Registrar mês</button>
+      </div>
+      <div id="form-novo-mes" style="display:none;" class="panel">
+        <div class="form-row">
+          <div><label>Mês de referência</label><input id="nm-competencia" type="month"></div>
+          <div><label>Total de operações no mês</label><input id="nm-total-operacoes" type="number" min="0"></div>
+        </div>
+        <div class="form-row single"><div><label>Quantas dessas operações já foram contestadas até hoje</label><input id="nm-total-contestadas" type="number" min="0"></div></div>
+        <div class="form-actions">
+          <button class="btn-secondary" onclick="fecharNovoMes()">Cancelar</button>
+          <button class="btn-primary" style="width:auto" onclick="salvarMetricaMensal()">Salvar mês</button>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="table-wrap"><table id="tbl-metricas">
+          <thead><tr><th>Mês</th><th>Operações</th><th>Contestadas</th><th>% contestação</th><th>Atualizado em</th></tr></thead>
+          <tbody></tbody>
+        </table></div>
       </div>
     </section>
 
@@ -465,6 +502,16 @@
             <div><label>Valor em risco (R$)</label><input id="det-valor-risco" type="number" step="0.01"></div>
           </div>
           <div class="form-row single"><div><label>Situação atual</label><input id="det-situacao"></div></div>
+          <div class="form-row single">
+            <div><label>Resultado do processo</label>
+              <select id="det-resultado">
+                <option value="EM_ANDAMENTO">Em andamento</option>
+                <option value="GANHO">Ganho</option>
+                <option value="PERDIDO">Perdido</option>
+                <option value="PARCIAL">Parcial</option>
+              </select>
+            </div>
+          </div>
           <div class="form-actions" style="justify-content:flex-start;">
             <button class="btn-primary" style="width:auto" onclick="salvarAtualizacaoProcesso()">Salvar dados do processo</button>
             <button class="btn-secondary" onclick="cancelarEdicaoProcesso()">Cancelar</button>
@@ -527,6 +574,7 @@ let currentUserIsAdmin = false;
 let processosCache = [];
 let processoAtualId = null;
 let opcoesCache = { BANCO:[], CONVENIO:[], OPERACAO:[], MOTIVO:[] };
+const RESULTADO_LABEL = { EM_ANDAMENTO:'Em andamento', GANHO:'Ganho', PERDIDO:'Perdido', PARCIAL:'Parcial' };
 
 function toast(msg){
   const t = document.getElementById('toast');
@@ -625,6 +673,7 @@ function showView(view){
   document.querySelectorAll('nav.tabs button').forEach(b=>b.classList.toggle('active', b.dataset.view===view));
   document.getElementById('fab-btn').style.display = view==='processos' ? 'flex' : 'none';
   if(view==='usuarios') carregarUsuarios();
+  if(view==='metricas') carregarMetricas();
 }
 function openModal(id){ document.getElementById(id).classList.add('active'); }
 function closeModal(id){ document.getElementById(id).classList.remove('active'); }
@@ -635,6 +684,7 @@ async function carregarTudo(){
   await carregarProcessos();
   await carregarDashboard();
   await carregarTarefas();
+  await carregarMetricas();
   showView('dashboard');
   document.getElementById('fab-btn').style.display='none';
 }
@@ -752,11 +802,18 @@ async function carregarDashboard(){
   const criticos = processosCache.filter(p=>['ALTO','CRITICO'].includes(p.classificacao_risco)).length;
   const { count: tarefasAtrasadas } = await sb.from('tarefas_acompanhamento').select('id',{count:'exact', head:true}).eq('status','ATRASADA');
 
+  const ganhos = processosCache.filter(p=>p.resultado==='GANHO').length;
+  const perdidos = processosCache.filter(p=>p.resultado==='PERDIDO').length;
+  const parciais = processosCache.filter(p=>p.resultado==='PARCIAL').length;
+  const concluidos = ganhos + perdidos + parciais;
+  const exitoPct = concluidos ? Math.round(ganhos/concluidos*100) : null;
+
   document.getElementById('kpi-cards').innerHTML = `
     <div class="kpi-card"><div><div class="label">Processos ativos</div><div class="value">${total}</div></div><div class="icon-box">${ICON_FOLDER}</div></div>
     <div class="kpi-card"><div><div class="label">Valor total em risco</div><div class="value">${fmtMoney(valorTotal)}</div></div><div class="icon-box">${ICON_COIN}</div></div>
     <div class="kpi-card ${criticos>0?'alert':''}"><div><div class="label">Risco alto/crítico</div><div class="value">${criticos}</div></div><div class="icon-box">${ICON_ALERT}</div></div>
     <div class="kpi-card ${tarefasAtrasadas>0?'alert':''}"><div><div class="label">Acompanhamentos atrasados</div><div class="value">${tarefasAtrasadas||0}</div></div><div class="icon-box">${ICON_CLOCK}</div></div>
+    <div class="kpi-card"><div><div class="label">% de êxito (${concluidos} concluídos)</div><div class="value">${exitoPct===null?'—':exitoPct+'%'}</div></div><div class="icon-box">${ICON_CLOCK}</div></div>
   `;
 
   const porBanco = {};
@@ -780,6 +837,17 @@ async function carregarDashboard(){
   // popula selects de filtro de motivo/risco
   document.getElementById('f-motivo').innerHTML = '<option value="">Todos os motivos</option>' + [...new Set(processosCache.map(p=>p.motivo).filter(Boolean))].sort().map(m=>`<option value="${m}">${m}</option>`).join('');
   document.getElementById('f-risco').innerHTML = '<option value="">Todos os riscos</option>' + ['BAIXO','MEDIO','ALTO','CRITICO'].map(r=>`<option value="${r}">${r}</option>`).join('');
+
+  const { data: cohort, error: cohortErr } = await sb.from('vw_cohort_ajuizamento').select('*');
+  const tbodyCohort = document.querySelector('#tbl-cohort tbody');
+  if(cohortErr || !cohort || !cohort.length){
+    tbodyCohort.innerHTML = `<tr><td colspan="3">${emptyState('Sem dados suficientes ainda', 'Preencha data da operação e data de ajuizamento nos processos.')}</td></tr>`;
+  }else{
+    tbodyCohort.innerHTML = cohort.map(c=>{
+      const [ano,mes] = c.mes_operacao.split('-');
+      return `<tr><td>${mes}/${ano}</td><td>${c.processos}</td><td>${c.media_dias_ate_ajuizamento} dias</td></tr>`;
+    }).join('');
+  }
 }
 
 async function carregarTarefas(){
@@ -798,6 +866,70 @@ async function carregarTarefas(){
       <td><span class="badge badge-${t.status}">${t.status}</span></td>
       <td>${t.status!=='CONCLUIDA' ? `<button class="btn-ghost" onclick="concluirTarefa('${t.tarefa_id}','${t.processo_id}')">Concluir</button>` : ''}</td>
     </tr>`).join('') : `<tr><td colspan="7">${emptyState('Nenhuma tarefa encontrada', 'Abra um processo para criar um acompanhamento.')}</td></tr>`;
+}
+
+// ---------------- MÉTRICAS MENSAIS ----------------
+function fmtMesAno(dataStr){
+  const [ano,mes] = dataStr.split('-');
+  const nomes = ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
+  return `${nomes[parseInt(mes,10)-1]}/${ano}`;
+}
+
+async function carregarMetricas(){
+  const { data, error } = await sb.from('metricas_mensais').select('*, usuarios_perfil(nome_exibicao)').order('competencia',{ascending:false});
+  if(error){ toast('Erro ao carregar métricas: '+error.message); return; }
+
+  const tbody = document.querySelector('#tbl-metricas tbody');
+  tbody.innerHTML = data.length ? data.map(m=>{
+    const pct = m.total_operacoes ? Math.round(m.total_contestadas/m.total_operacoes*1000)/10 : 0;
+    return `<tr>
+      <td>${fmtMesAno(m.competencia)}</td>
+      <td>${m.total_operacoes}</td>
+      <td>${m.total_contestadas}</td>
+      <td>${pct}%</td>
+      <td style="font-size:11px; color:var(--textSecondary);">${new Date(m.atualizado_em).toLocaleDateString('pt-BR')} · ${m.usuarios_perfil?.nome_exibicao||'—'}</td>
+    </tr>`;
+  }).join('') : `<tr><td colspan="5">${emptyState('Nenhum mês registrado ainda', 'Clique em "+ Registrar mês" para começar.')}</td></tr>`;
+
+  // Checa se o mês anterior ao atual já foi alimentado
+  const hoje = new Date();
+  const mesAnterior = new Date(hoje.getFullYear(), hoje.getMonth()-1, 1);
+  const competenciaEsperada = mesAnterior.toISOString().slice(0,7);
+  const jaTemMesAnterior = data.some(m=>m.competencia.slice(0,7)===competenciaEsperada);
+  const banner = document.getElementById('banner-mes-faltando');
+  if(!jaTemMesAnterior){
+    banner.innerHTML = `<div class="banner-aviso">
+      <span>Os dados de operações de <b>${fmtMesAno(competenciaEsperada+'-01')}</b> ainda não foram alimentados.</span>
+      <button class="btn-secondary" onclick="showView('metricas'); abrirNovoMes('${competenciaEsperada}')">Alimentar agora</button>
+    </div>`;
+  }else{
+    banner.innerHTML = '';
+  }
+}
+
+function abrirNovoMes(competenciaPreenchida){
+  document.getElementById('form-novo-mes').style.display = 'block';
+  document.getElementById('nm-competencia').value = competenciaPreenchida || new Date().toISOString().slice(0,7);
+  document.getElementById('nm-total-operacoes').value = '';
+  document.getElementById('nm-total-contestadas').value = '';
+}
+function fecharNovoMes(){
+  document.getElementById('form-novo-mes').style.display = 'none';
+}
+async function salvarMetricaMensal(){
+  const competenciaMes = document.getElementById('nm-competencia').value;
+  const totalOperacoes = document.getElementById('nm-total-operacoes').value;
+  const totalContestadas = document.getElementById('nm-total-contestadas').value;
+  if(!competenciaMes || totalOperacoes===''){ toast('Preencha o mês e o total de operações.'); return; }
+  const competencia = competenciaMes + '-01';
+  const { error } = await sb.from('metricas_mensais').upsert({
+    competencia, total_operacoes: Number(totalOperacoes), total_contestadas: Number(totalContestadas)||0,
+    atualizado_por: currentUser.id
+  }, { onConflict: 'competencia' });
+  if(error){ toast('Erro: '+error.message); return; }
+  toast('Mês registrado.');
+  fecharNovoMes();
+  await carregarMetricas();
 }
 
 // ---------------- NOVO PROCESSO ----------------
@@ -858,6 +990,7 @@ function renderDetView(p){
       ${fc('Data de ajuizamento', fmtDate(p.data_ajuizamento))}
       ${fc('Valor em risco', fmtMoney(p.valor_risco))}
       ${fc('Classificação de risco', `<span class="badge badge-${p.classificacao_risco}">${p.classificacao_risco}</span>`)}
+      ${fc('Resultado', `<span class="badge badge-${p.resultado}">${RESULTADO_LABEL[p.resultado]||p.resultado}</span>`)}
       ${fc('Situação atual', p.situacao_atual||'—')}
     </div>
   `;
@@ -897,6 +1030,7 @@ function abrirEdicaoProcesso(){
   document.getElementById('det-risco').value = p.classificacao_risco;
   document.getElementById('det-valor-risco').value = p.valor_risco || '';
   document.getElementById('det-situacao').value = p.situacao_atual || '';
+  document.getElementById('det-resultado').value = p.resultado || 'EM_ANDAMENTO';
   document.getElementById('det-edit-form').style.display = 'block';
 }
 
@@ -919,7 +1053,8 @@ async function salvarAtualizacaoProcesso(){
     data_ajuizamento: document.getElementById('det-data-ajuizamento').value || null,
     classificacao_risco: document.getElementById('det-risco').value,
     valor_risco: document.getElementById('det-valor-risco').value || null,
-    situacao_atual: document.getElementById('det-situacao').value.trim()
+    situacao_atual: document.getElementById('det-situacao').value.trim(),
+    resultado: document.getElementById('det-resultado').value
   };
   const { error } = await sb.from('processos_judiciais').update(payload).eq('id', processoAtualId);
   if(error){ toast('Erro: '+error.message+' (só administradores podem editar um processo)'); return; }
