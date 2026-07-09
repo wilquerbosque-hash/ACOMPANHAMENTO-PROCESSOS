@@ -1,0 +1,883 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Konsi Jurídico | Acompanhamento de Processos</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root{
+    --konsiTeal:#17AC8E;
+    --konsiTealLight:#3FD6B4;
+    --konsiTealDark:#0F7C64;
+    --bgBlack:#0E0D0B;
+    --surface1:#18170F1A;
+    --surfaceCard:#1B1A17;
+    --surfaceCardAlt:#221F1B;
+    --textPrimary:#F5F4F1;
+    --textSecondary:#9C9A94;
+    --textMuted:#6B6862;
+    --border:#2E2C28;
+    --borderStrong:#3E3B36;
+    --erro:#FF6B6B; --erroBg:#3A1616;
+    --sucesso:#3FDC9E; --sucessoBg:#123326;
+    --alerta:#F3B94E; --alertaBg:#3A2C10;
+    --radius:10px;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; font-family:'Poppins',sans-serif; background:var(--bgBlack); color:var(--textPrimary);
+  }
+  a{color:var(--konsiTeal);}
+
+  /* ---------- LOGIN ---------- */
+  #login-screen{
+    min-height:100vh; display:flex; align-items:center; justify-content:center;
+    background:radial-gradient(circle at 50% 0%, #17140F 0%, var(--bgBlack) 60%);
+  }
+  .login-card{
+    background:var(--surfaceCard); border:1px solid var(--border); border-radius:16px; padding:40px 36px; width:360px;
+    box-shadow:0 20px 60px rgba(0,0,0,.5);
+  }
+  .logo-mark{ display:flex; align-items:center; margin-bottom:28px; }
+  .logo-mark img{ height:32px; width:auto; display:block; }
+  .login-card h1{font-size:15px; color:var(--textSecondary); font-weight:500; margin:0 0 24px;}
+  input, select, textarea{
+    width:100%; padding:11px 12px; border:1px solid var(--border); border-radius:8px;
+    font-family:'Poppins',sans-serif; font-size:14px; color:var(--textPrimary); margin-bottom:14px; background:#121110;
+  }
+  input::placeholder{ color:var(--textMuted); }
+  input:focus, select:focus, textarea:focus{ outline:2px solid var(--konsiTeal); outline-offset:1px; border-color:var(--konsiTeal);}
+  label{font-size:12px; font-weight:600; color:var(--textSecondary); display:block; margin-bottom:6px; text-transform:uppercase; letter-spacing:.03em;}
+  button{
+    font-family:'Poppins',sans-serif; cursor:pointer; border:none; border-radius:8px; font-weight:700; font-size:14px;
+  }
+  .btn-primary{ background:var(--konsiTeal); color:#08130F; padding:11px 18px; width:100%; transition:.15s;}
+  .btn-primary:hover{ background:var(--konsiTealLight); }
+  .btn-secondary{ background:var(--surfaceCardAlt); color:var(--textPrimary); border:1px solid var(--border); padding:10px 16px; }
+  .btn-secondary:hover{ background:#2A2823; }
+  .btn-ghost{ background:transparent; color:var(--konsiTealLight); padding:8px 10px; }
+  .btn-danger{ background:var(--erroBg); color:var(--erro); padding:9px 14px; }
+  #login-error{ color:var(--erro); font-size:13px; margin:-6px 0 12px; display:none;}
+
+  /* ---------- APP SHELL ---------- */
+  #app{ display:none; min-height:100vh; }
+  header.topbar{
+    background:#000000; border-bottom:1px solid var(--border); color:#fff; display:flex; align-items:center;
+    justify-content:space-between; padding:0 28px; height:64px; position:sticky; top:0; z-index:20;
+  }
+  nav.tabs{ display:flex; gap:4px; }
+  nav.tabs button{
+    background:transparent; color:var(--textSecondary); padding:10px 16px; border-radius:8px; font-size:14px;
+  }
+  nav.tabs button.active{ background:var(--konsiTeal); color:#08130F; }
+  .user-chip{ font-size:13px; color:var(--textSecondary); display:flex; align-items:center; gap:10px;}
+  .user-chip button{ color:var(--textSecondary); text-decoration:underline; background:none; font-size:12px; }
+
+  main{ max-width:1280px; margin:0 auto; padding:28px; }
+  .view{ display:none; }
+  .view.active{ display:block; }
+
+  .page-head{ display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:20px; flex-wrap:wrap; gap:12px;}
+  .page-head h2{ font-size:24px; margin:0 0 4px; color:#fff; font-weight:700;}
+  .page-head p{ margin:0; color:var(--textSecondary); font-size:13px; }
+
+  /* cards */
+  .cards-row{ display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:16px; margin-bottom:24px; }
+  .kpi-card{ background:var(--surfaceCard); border-radius:var(--radius); padding:18px 20px; border:1px solid var(--border); }
+  .kpi-card .label{ font-size:12px; color:var(--textSecondary); text-transform:uppercase; letter-spacing:.03em; font-weight:600;}
+  .kpi-card .value{ font-size:28px; font-weight:800; color:var(--konsiTealLight); margin-top:6px;}
+  .kpi-card.alert .value{ color:var(--erro); }
+
+  .panel{ background:var(--surfaceCard); border-radius:var(--radius); border:1px solid var(--border); padding:20px; margin-bottom:20px;}
+  .panel h3{ margin:0 0 14px; font-size:16px; color:#fff; font-weight:600;}
+
+  .grid-2{ display:grid; grid-template-columns:1.3fr 1fr; gap:20px; }
+  @media (max-width:960px){ .grid-2{ grid-template-columns:1fr; } }
+
+  table{ width:100%; border-collapse:collapse; font-size:13px;}
+  th{ text-align:left; background:var(--konsiTealDark); color:#fff; padding:10px 12px; font-weight:600; position:sticky; top:0;}
+  th:first-child{ border-top-left-radius:8px;} th:last-child{ border-top-right-radius:8px;}
+  td{ padding:10px 12px; border-bottom:1px solid var(--border); vertical-align:middle; color:var(--textPrimary);}
+  tr.clickable{ cursor:pointer; }
+  tr.clickable:hover td{ background:#221F1B; }
+  .table-wrap{ overflow-x:auto; }
+
+  .badge{ display:inline-block; padding:3px 10px; border-radius:999px; font-size:11px; font-weight:700; }
+  .badge-BAIXO{ background:var(--sucessoBg); color:var(--sucesso); }
+  .badge-MEDIO{ background:var(--alertaBg); color:var(--alerta); }
+  .badge-ALTO{ background:#3A2214; color:#F0935B; }
+  .badge-CRITICO{ background:var(--erroBg); color:var(--erro); }
+  .badge-PENDENTE{ background:#232320; color:var(--textSecondary); }
+  .badge-ATRASADA{ background:var(--erroBg); color:var(--erro); }
+  .badge-CONCLUIDA{ background:var(--sucessoBg); color:var(--sucesso); }
+
+  .filters{ display:flex; gap:10px; flex-wrap:wrap; margin-bottom:16px; }
+  .filters select, .filters input{ margin-bottom:0; width:auto; min-width:150px; }
+
+  .fab{
+    position:fixed; bottom:30px; right:30px; background:var(--konsiTeal); color:#08130F;
+    width:56px; height:56px; border-radius:50%; font-size:26px; box-shadow:0 8px 24px rgba(23,172,142,.4);
+    display:flex; align-items:center; justify-content:center; z-index:30;
+  }
+  .fab:hover{ background:var(--konsiTealLight); }
+
+  /* modal */
+  .modal-overlay{
+    position:fixed; inset:0; background:rgba(0,0,0,.7); display:none; align-items:flex-start;
+    justify-content:center; padding:40px 16px; overflow-y:auto; z-index:40;
+  }
+  .modal-overlay.active{ display:flex; }
+  .modal{ background:var(--surfaceCard); border:1px solid var(--border); border-radius:14px; width:100%; max-width:680px; padding:26px 28px; margin-top:20px;}
+  .modal.wide{ max-width:920px; }
+  .modal-head{ display:flex; justify-content:space-between; align-items:center; margin-bottom:18px;}
+  .modal-head h3{ margin:0; color:#fff; font-size:18px; font-weight:600;}
+  .modal-head button{ background:none; font-size:20px; color:var(--textSecondary); }
+  .form-row{ display:grid; grid-template-columns:1fr 1fr; gap:0 16px; }
+  .form-row.single{ grid-template-columns:1fr; }
+  .form-actions{ display:flex; justify-content:flex-end; gap:10px; margin-top:6px; }
+
+  /* timeline */
+  .timeline{ list-style:none; padding:0; margin:0; }
+  .timeline li{ border-left:2px solid var(--konsiTealDark); padding:2px 0 18px 18px; position:relative; }
+  .timeline li:last-child{ border-color:transparent; }
+  .timeline li::before{ content:''; position:absolute; left:-6px; top:2px; width:10px; height:10px; border-radius:50%; background:var(--konsiTeal); }
+  .timeline .tdate{ font-size:12px; color:var(--textSecondary); font-weight:600; }
+  .timeline .tdesc{ font-size:13px; margin:2px 0; color:var(--textPrimary); }
+  .timeline .tresp{ font-size:11px; color:var(--textMuted); }
+
+  .empty-state{ text-align:center; padding:40px 20px; color:var(--textSecondary); font-size:13px; }
+  .toast{
+    position:fixed; bottom:24px; left:50%; transform:translateX(-50%); background:var(--konsiTeal); color:#08130F;
+    padding:12px 22px; border-radius:8px; font-size:13px; font-weight:600; z-index:100; display:none; box-shadow:0 8px 24px rgba(0,0,0,.5);
+  }
+  .section-label{ font-size:11px; font-weight:700; color:var(--textSecondary); text-transform:uppercase; letter-spacing:.04em; margin:18px 0 8px;}
+  .risk-select{ display:flex; gap:8px; }
+  .field-note{ font-size:11px; color:var(--textMuted); margin:-10px 0 14px; }
+</style>
+</head>
+<body>
+
+<!-- ============ LOGIN ============ -->
+<div id="login-screen">
+  <div class="login-card" id="login-form-wrap">
+    <div class="logo-mark"><img src="assets/logo-konsi.png" alt="Konsi"></div>
+    <h1>Jurídico · Acompanhamento de Processos</h1>
+    <div id="login-error"></div>
+    <label>E-mail</label>
+    <input type="email" id="login-email" placeholder="voce@konsi.com.br">
+    <label>Senha</label>
+    <input type="password" id="login-password" placeholder="••••••••">
+    <button class="btn-primary" onclick="doLogin()">Entrar</button>
+    <div style="text-align:center; margin-top:14px;">
+      <button class="btn-ghost" style="font-size:12px; padding:4px;" onclick="abrirEsqueciSenha()">Esqueci minha senha</button>
+    </div>
+  </div>
+
+  <div class="login-card" id="esqueci-senha-wrap" style="display:none;">
+    <div class="logo-mark"><img src="assets/logo-konsi.png" alt="Konsi"></div>
+    <h1>Recuperar acesso</h1>
+    <div id="esqueci-msg"></div>
+    <label>E-mail cadastrado</label>
+    <input type="email" id="esqueci-email" placeholder="voce@konsi.com.br">
+    <button class="btn-primary" onclick="enviarRecuperacaoSenha()">Enviar link de recuperação</button>
+    <div style="text-align:center; margin-top:14px;">
+      <button class="btn-ghost" style="font-size:12px; padding:4px;" onclick="voltarParaLogin()">Voltar para o login</button>
+    </div>
+  </div>
+
+  <div class="login-card" id="nova-senha-wrap" style="display:none;">
+    <div class="logo-mark"><img src="assets/logo-konsi.png" alt="Konsi"></div>
+    <h1>Defina sua nova senha</h1>
+    <div id="nova-senha-msg"></div>
+    <label>Nova senha</label>
+    <input type="password" id="nova-senha-input" placeholder="••••••••">
+    <button class="btn-primary" onclick="salvarNovaSenha()">Salvar nova senha</button>
+  </div>
+</div>
+
+<!-- ============ APP ============ -->
+<div id="app">
+  <header class="topbar">
+    <div class="logo-mark" style="margin-bottom:0;"><img src="assets/logo-konsi.png" alt="Konsi" style="height:26px;"></div>
+    <nav class="tabs">
+      <button data-view="dashboard" class="active" onclick="showView('dashboard')">Dashboard</button>
+      <button data-view="processos" onclick="showView('processos')">Processos</button>
+      <button data-view="tarefas" onclick="showView('tarefas')">Acompanhamentos</button>
+      <button data-view="usuarios" id="nav-usuarios" style="display:none;" onclick="showView('usuarios')">Usuários</button>
+    </nav>
+    <div class="user-chip">
+      <span id="user-name">—</span>
+      <button onclick="doLogout()">Sair</button>
+    </div>
+  </header>
+
+  <main>
+    <!-- ---------- DASHBOARD ---------- -->
+    <section id="view-dashboard" class="view active">
+      <div class="page-head">
+        <div><h2>Visão geral</h2><p>Exposição e andamento dos processos judiciais recepcionados</p></div>
+      </div>
+      <div class="cards-row" id="kpi-cards"></div>
+      <div class="grid-2">
+        <div class="panel">
+          <h3>Processos por banco</h3>
+          <div class="table-wrap"><table id="tbl-por-banco"><thead><tr><th>Banco</th><th>Processos</th><th>Valor em risco</th></tr></thead><tbody></tbody></table></div>
+        </div>
+        <div class="panel">
+          <h3>Distribuição de risco</h3>
+          <div class="table-wrap"><table id="tbl-por-risco"><thead><tr><th>Risco</th><th>Processos</th><th>Valor</th></tr></thead><tbody></tbody></table></div>
+        </div>
+      </div>
+      <div class="panel">
+        <h3>Motivos das ações</h3>
+        <div class="table-wrap"><table id="tbl-por-motivo"><thead><tr><th>Motivo</th><th>Processos</th></tr></thead><tbody></tbody></table></div>
+      </div>
+    </section>
+
+    <!-- ---------- PROCESSOS ---------- -->
+    <section id="view-processos" class="view">
+      <div class="page-head">
+        <div><h2>Processos judiciais</h2><p>Todos os processos com o banco no polo passivo</p></div>
+      </div>
+      <div class="filters">
+        <select id="f-banco"><option value="">Todos os bancos</option></select>
+        <select id="f-motivo"><option value="">Todos os motivos</option></select>
+        <select id="f-risco"><option value="">Todos os riscos</option></select>
+        <input type="text" id="f-busca" placeholder="Buscar por nome, CPF ou nº processo">
+      </div>
+      <div class="panel">
+        <div class="table-wrap"><table id="tbl-processos">
+          <thead><tr><th>Processo</th><th>Cliente</th><th>Banco</th><th>Convênio</th><th>Operação</th><th>Motivo</th><th>Situação</th><th>Risco</th><th>Valor risco</th></tr></thead>
+          <tbody></tbody>
+        </table></div>
+      </div>
+    </section>
+
+    <!-- ---------- TAREFAS ---------- -->
+    <section id="view-tarefas" class="view">
+      <div class="page-head">
+        <div><h2>Acompanhamentos</h2><p>Tarefas de acompanhamento vinculadas a cada processo</p></div>
+      </div>
+      <div class="filters">
+        <select id="f-tarefa-status">
+          <option value="">Todos os status</option>
+          <option value="PENDENTE">Pendente</option>
+          <option value="ATRASADA">Atrasada</option>
+          <option value="CONCLUIDA">Concluída</option>
+        </select>
+      </div>
+      <div class="panel">
+        <div class="table-wrap"><table id="tbl-tarefas">
+          <thead><tr><th>Prazo</th><th>Tarefa</th><th>Processo</th><th>Cliente</th><th>Responsável</th><th>Status</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table></div>
+      </div>
+    </section>
+
+    <!-- ---------- USUÁRIOS (admin) ---------- -->
+    <section id="view-usuarios" class="view">
+      <div class="page-head">
+        <div><h2>Usuários</h2><p>Quem tem acesso ao sistema</p></div>
+        <button class="btn-secondary" onclick="openModal('modal-novo-usuario')">+ Novo usuário</button>
+      </div>
+      <div class="panel">
+        <div class="table-wrap"><table id="tbl-usuarios">
+          <thead><tr><th>Nome</th><th>E-mail</th><th>Administrador</th><th>Status</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table></div>
+      </div>
+    </section>
+  </main>
+
+  <button class="fab" id="fab-btn" title="Novo processo" onclick="openNovoProcesso()">+</button>
+</div>
+
+<!-- ============ MODAL: NOVO PROCESSO ============ -->
+<div class="modal-overlay" id="modal-novo-processo">
+  <div class="modal wide">
+    <div class="modal-head"><h3>Cadastrar novo processo</h3><button onclick="closeModal('modal-novo-processo')">✕</button></div>
+    <p class="field-note">Não encontrou o banco, convênio, tipo de operação ou motivo na lista? Escolha "+ Adicionar novo..." no campo — o valor fica salvo para as próximas vezes.</p>
+    <div class="form-row">
+      <div><label>Número do processo</label><input id="np-numero" placeholder="0000000-00.0000.0.00.0000"></div>
+      <div><label>Tribunal</label><input id="np-tribunal" placeholder="TJBA, TJSP, TRF1..."></div>
+    </div>
+    <div class="form-row">
+      <div><label>Nome completo do cliente</label><input id="np-nome"></div>
+      <div><label>CPF</label><input id="np-cpf"></div>
+    </div>
+    <div class="form-row">
+      <div><label>ADE do contrato</label><input id="np-ade"></div>
+      <div><label>Banco</label>
+        <select id="np-banco" onchange="tratarNovoValorDominio('np-banco','BANCO')"></select>
+      </div>
+    </div>
+    <div class="form-row">
+      <div><label>Convênio</label>
+        <select id="np-convenio" onchange="tratarNovoValorDominio('np-convenio','CONVENIO')"></select>
+      </div>
+      <div><label>Tipo de operação</label>
+        <select id="np-operacao" onchange="tratarNovoValorDominio('np-operacao','OPERACAO')"></select>
+      </div>
+    </div>
+    <div class="form-row">
+      <div><label>Motivo da ação</label>
+        <select id="np-motivo" onchange="tratarNovoValorDominio('np-motivo','MOTIVO')"></select>
+      </div>
+      <div><label>Valor da operação (R$)</label><input id="np-valor-operacao" type="number" step="0.01"></div>
+    </div>
+    <div class="form-row">
+      <div><label>Data da operação</label><input id="np-data-operacao" type="date"></div>
+      <div><label>Data de ajuizamento (se conhecida)</label><input id="np-data-ajuizamento" type="date"></div>
+    </div>
+    <div class="form-row">
+      <div><label>Classificação de risco</label>
+        <select id="np-risco">
+          <option value="BAIXO">Baixo</option>
+          <option value="MEDIO">Médio</option>
+          <option value="ALTO">Alto</option>
+          <option value="CRITICO">Crítico</option>
+        </select>
+      </div>
+      <div><label>Valor em risco (R$)</label><input id="np-valor-risco" type="number" step="0.01"></div>
+    </div>
+    <div class="form-row single">
+      <div><label>Situação atual</label><input id="np-situacao" placeholder="Ex: Aguardando citação, Aguardando sentença..."></div>
+    </div>
+    <div class="form-actions">
+      <button class="btn-secondary" onclick="closeModal('modal-novo-processo')">Cancelar</button>
+      <button class="btn-primary" style="width:auto" onclick="salvarNovoProcesso()">Salvar processo</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ MODAL: DETALHE DO PROCESSO ============ -->
+<div class="modal-overlay" id="modal-detalhe">
+  <div class="modal wide">
+    <div class="modal-head"><h3 id="det-titulo">Processo</h3><button onclick="closeModal('modal-detalhe')">✕</button></div>
+
+    <div class="grid-2">
+      <div>
+        <div class="section-label">Dados do processo</div>
+        <div id="det-dados" style="font-size:13px; line-height:1.9;"></div>
+
+        <div class="section-label">Atualizar risco / situação</div>
+        <div class="form-row">
+          <div><label>Classificação de risco</label>
+            <select id="det-risco">
+              <option value="BAIXO">Baixo</option><option value="MEDIO">Médio</option>
+              <option value="ALTO">Alto</option><option value="CRITICO">Crítico</option>
+            </select>
+          </div>
+          <div><label>Valor em risco (R$)</label><input id="det-valor-risco" type="number" step="0.01"></div>
+        </div>
+        <div class="form-row single"><div><label>Situação atual</label><input id="det-situacao"></div></div>
+        <button class="btn-secondary" onclick="salvarAtualizacaoProcesso()">Salvar atualização</button>
+
+        <div class="section-label">Nova tarefa de acompanhamento</div>
+        <div class="form-row">
+          <div><label>Título</label><input id="tarefa-titulo" placeholder="Acompanhar processo..."></div>
+          <div><label>Prazo</label><input id="tarefa-prazo" type="date"></div>
+        </div>
+        <button class="btn-secondary" onclick="criarTarefa()">Criar tarefa</button>
+      </div>
+
+      <div>
+        <div class="section-label">Registrar movimentação</div>
+        <label>Data da movimentação</label><input id="mov-data" type="date">
+        <label>Descrição da movimentação identificada</label>
+        <textarea id="mov-desc" rows="3" placeholder="Ex: sentença publicada, juntada de contestação, etc."></textarea>
+        <button class="btn-secondary" onclick="salvarMovimentacao()">Adicionar ao histórico</button>
+
+        <div class="section-label">Histórico de movimentações</div>
+        <ul class="timeline" id="det-timeline"></ul>
+
+        <div class="section-label">Tarefas deste processo</div>
+        <div id="det-tarefas"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ MODAL: NOVO USUÁRIO ============ -->
+<div class="modal-overlay" id="modal-novo-usuario">
+  <div class="modal">
+    <div class="modal-head"><h3>Novo usuário</h3><button onclick="closeModal('modal-novo-usuario')">✕</button></div>
+    <p class="field-note">O sistema gera uma senha provisória — copie e repasse pra pessoa. Ela pode trocar depois em "Esqueci minha senha".</p>
+    <label>Nome</label><input id="nu-nome" placeholder="Nome exibido no sistema">
+    <label>E-mail</label><input id="nu-email" type="email" placeholder="pessoa@konsi.com.br">
+    <label style="display:flex; align-items:center; gap:8px; text-transform:none;"><input type="checkbox" id="nu-admin" style="width:auto; margin:0;"> É administrador (pode gerenciar outros usuários)</label>
+    <div class="form-actions">
+      <button class="btn-secondary" onclick="closeModal('modal-novo-usuario')">Cancelar</button>
+      <button class="btn-primary" style="width:auto" onclick="criarUsuario()">Criar usuário</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ============================================================
+// CONFIGURAÇÃO SUPABASE — troque pelas suas chaves do projeto
+// ============================================================
+const SUPABASE_URL = "https://SEU-PROJETO.supabase.co";
+const SUPABASE_ANON_KEY = "SUA-CHAVE-ANON-PUBLICA";
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const FN_ADMIN_USUARIOS = `${SUPABASE_URL}/functions/v1/admin-usuarios`;
+
+let currentUser = null;
+let currentUserIsAdmin = false;
+let processosCache = [];
+let processoAtualId = null;
+let opcoesCache = { BANCO:[], CONVENIO:[], OPERACAO:[], MOTIVO:[] };
+
+function toast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.style.display='block';
+  setTimeout(()=> t.style.display='none', 3000);
+}
+function fmtMoney(v){ if(v==null) return '—'; return Number(v).toLocaleString('pt-BR',{style:'currency',currency:'BRL'}); }
+function fmtDate(d){ if(!d) return '—'; const [y,m,day]=d.split('-'); return `${day}/${m}/${y}`; }
+
+// ---------------- AUTH ----------------
+async function doLogin(){
+  const email = document.getElementById('login-email').value.trim();
+  const password = document.getElementById('login-password').value;
+  const errEl = document.getElementById('login-error');
+  errEl.style.display='none';
+  const { data, error } = await sb.auth.signInWithPassword({ email, password });
+  if(error){ errEl.textContent = 'E-mail ou senha inválidos.'; errEl.style.display='block'; return; }
+  currentUser = data.user;
+  await afterLogin();
+}
+async function doLogout(){ await sb.auth.signOut(); location.reload(); }
+
+async function afterLogin(){
+  document.getElementById('login-screen').style.display='none';
+  document.getElementById('app').style.display='block';
+  const { data: perfil } = await sb.from('usuarios_perfil').select('nome_exibicao, is_admin').eq('id', currentUser.id).single();
+  document.getElementById('user-name').textContent = perfil ? perfil.nome_exibicao : currentUser.email;
+  currentUserIsAdmin = !!perfil?.is_admin;
+  document.getElementById('nav-usuarios').style.display = currentUserIsAdmin ? 'inline-block' : 'none';
+  await carregarTudo();
+}
+
+// ---------------- RECUPERAÇÃO DE SENHA ----------------
+function abrirEsqueciSenha(){
+  document.getElementById('login-form-wrap').style.display='none';
+  document.getElementById('esqueci-senha-wrap').style.display='block';
+}
+function voltarParaLogin(){
+  document.getElementById('esqueci-senha-wrap').style.display='none';
+  document.getElementById('login-form-wrap').style.display='block';
+}
+async function enviarRecuperacaoSenha(){
+  const email = document.getElementById('esqueci-email').value.trim();
+  const msg = document.getElementById('esqueci-msg');
+  if(!email){ msg.innerHTML = '<p style="color:var(--erro); font-size:13px;">Informe o e-mail.</p>'; return; }
+  const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: window.location.href.split('#')[0] });
+  msg.innerHTML = error
+    ? `<p style="color:var(--erro); font-size:13px;">${error.message}</p>`
+    : `<p style="color:var(--sucesso); font-size:13px;">Se esse e-mail tiver uma conta, enviamos um link de recuperação. Confira sua caixa de entrada.</p>`;
+}
+
+// Quando a pessoa clica no link do e-mail, o Supabase redireciona de volta com
+// um evento PASSWORD_RECOVERY — mostramos a tela de definir nova senha.
+sb.auth.onAuthStateChange((event, session) => {
+  if(event === 'PASSWORD_RECOVERY'){
+    document.getElementById('login-form-wrap').style.display='none';
+    document.getElementById('esqueci-senha-wrap').style.display='none';
+    document.getElementById('nova-senha-wrap').style.display='block';
+  }
+});
+async function salvarNovaSenha(){
+  const novaSenha = document.getElementById('nova-senha-input').value;
+  const msg = document.getElementById('nova-senha-msg');
+  if(!novaSenha || novaSenha.length < 6){ msg.innerHTML = '<p style="color:var(--erro); font-size:13px;">A senha precisa ter ao menos 6 caracteres.</p>'; return; }
+  const { error } = await sb.auth.updateUser({ password: novaSenha });
+  if(error){ msg.innerHTML = `<p style="color:var(--erro); font-size:13px;">${error.message}</p>`; return; }
+  toast('Senha atualizada. Faça login novamente.');
+  await sb.auth.signOut();
+  location.reload();
+}
+
+// ---------------- CHAMADA À EDGE FUNCTION (gestão de usuários) ----------------
+async function chamarAdminUsuarios(payload){
+  const { data: sessionData } = await sb.auth.getSession();
+  const token = sessionData?.session?.access_token;
+  const resp = await fetch(FN_ADMIN_USUARIOS, {
+    method:'POST',
+    headers:{ 'Content-Type':'application/json', 'Authorization': `Bearer ${token}` },
+    body: JSON.stringify(payload)
+  });
+  const json = await resp.json();
+  if(!resp.ok) throw new Error(json.error || 'Erro ao chamar a função de administração.');
+  return json;
+}
+
+async function checarSessao(){
+  const { data } = await sb.auth.getSession();
+  if(data.session){ currentUser = data.session.user; await afterLogin(); }
+}
+checarSessao();
+
+// ---------------- NAVEGAÇÃO ----------------
+function showView(view){
+  document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
+  document.getElementById('view-'+view).classList.add('active');
+  document.querySelectorAll('nav.tabs button').forEach(b=>b.classList.toggle('active', b.dataset.view===view));
+  document.getElementById('fab-btn').style.display = view==='processos' ? 'flex' : 'none';
+  if(view==='usuarios') carregarUsuarios();
+}
+function openModal(id){ document.getElementById(id).classList.add('active'); }
+function closeModal(id){ document.getElementById(id).classList.remove('active'); }
+
+// ---------------- CARGA DE DADOS ----------------
+async function carregarTudo(){
+  await carregarOpcoesDominio();
+  await carregarProcessos();
+  await carregarDashboard();
+  await carregarTarefas();
+  showView('dashboard');
+  document.getElementById('fab-btn').style.display='none';
+}
+
+async function carregarOpcoesDominio(){
+  const { data, error } = await sb.from('opcoes_dominio').select('categoria,valor').order('valor');
+  if(error){ toast('Erro ao carregar listas: '+error.message); return; }
+  opcoesCache = { BANCO:[], CONVENIO:[], OPERACAO:[], MOTIVO:[] };
+  (data||[]).forEach(o=>{ if(opcoesCache[o.categoria]) opcoesCache[o.categoria].push(o.valor); });
+}
+
+function preencherSelectDominio(selectId, categoria, valorAtual){
+  const sel = document.getElementById(selectId);
+  sel.innerHTML = '<option value="">Selecione...</option>' +
+    opcoesCache[categoria].map(v=>`<option value="${v}">${v}</option>`).join('') +
+    '<option value="__novo__">+ Adicionar novo...</option>';
+  if(valorAtual) sel.value = valorAtual;
+}
+
+async function tratarNovoValorDominio(selectId, categoria){
+  const sel = document.getElementById(selectId);
+  if(sel.value !== '__novo__') return;
+  const novo = prompt('Digite o novo valor para ' + categoria.toLowerCase() + ':');
+  if(!novo || !novo.trim()){ sel.value=''; return; }
+  const valor = novo.trim().toUpperCase();
+  const { error } = await sb.from('opcoes_dominio').insert({ categoria, valor });
+  if(error && error.code !== '23505'){ toast('Erro ao adicionar: '+error.message); sel.value=''; return; }
+  if(!opcoesCache[categoria].includes(valor)){ opcoesCache[categoria].push(valor); opcoesCache[categoria].sort(); }
+  preencherSelectDominio(selectId, categoria, valor);
+  toast('Opção adicionada à lista.');
+}
+
+async function carregarProcessos(){
+  const { data, error } = await sb.from('processos_judiciais').select('*').order('criado_em', {ascending:false});
+  if(error){ toast('Erro ao carregar processos: '+error.message); return; }
+  processosCache = data || [];
+  montarFiltros();
+  renderTabelaProcessos();
+}
+
+function montarFiltros(){
+  const bancos = [...new Set(processosCache.map(p=>p.banco).filter(Boolean))].sort();
+  const selBanco = document.getElementById('f-banco');
+  selBanco.innerHTML = '<option value="">Todos os bancos</option>' + bancos.map(b=>`<option>${b}</option>`).join('');
+  ['f-banco','f-motivo','f-risco','f-busca'].forEach(id=>{
+    document.getElementById(id).oninput = renderTabelaProcessos;
+  });
+}
+
+function renderTabelaProcessos(){
+  const banco = document.getElementById('f-banco').value;
+  const motivo = document.getElementById('f-motivo').value;
+  const risco = document.getElementById('f-risco').value;
+  const busca = document.getElementById('f-busca').value.toLowerCase();
+  const tbody = document.querySelector('#tbl-processos tbody');
+  const filtrado = processosCache.filter(p=>
+    (!banco || p.banco===banco) &&
+    (!motivo || p.motivo===motivo) &&
+    (!risco || p.classificacao_risco===risco) &&
+    (!busca || (p.nome_cliente||'').toLowerCase().includes(busca) || (p.cpf||'').includes(busca) || (p.numero_processo||'').includes(busca))
+  );
+  tbody.innerHTML = filtrado.length ? filtrado.map(p=>`
+    <tr class="clickable" onclick="abrirDetalhe('${p.id}')">
+      <td>${p.numero_processo}</td>
+      <td>${p.nome_cliente}</td>
+      <td>${p.banco}</td>
+      <td>${p.convenio||'—'}</td>
+      <td>${p.tipo_operacao||'—'}</td>
+      <td>${p.motivo}</td>
+      <td>${p.situacao_atual||'—'}</td>
+      <td><span class="badge badge-${p.classificacao_risco}">${p.classificacao_risco}</span></td>
+      <td>${fmtMoney(p.valor_risco)}</td>
+    </tr>`).join('') : `<tr><td colspan="9"><div class="empty-state">Nenhum processo encontrado com esses filtros.</div></td></tr>`;
+}
+
+async function carregarDashboard(){
+  const total = processosCache.length;
+  const valorTotal = processosCache.reduce((s,p)=>s+(Number(p.valor_risco)||0),0);
+  const criticos = processosCache.filter(p=>['ALTO','CRITICO'].includes(p.classificacao_risco)).length;
+  const { count: tarefasAtrasadas } = await sb.from('tarefas_acompanhamento').select('id',{count:'exact', head:true}).eq('status','ATRASADA');
+
+  document.getElementById('kpi-cards').innerHTML = `
+    <div class="kpi-card"><div class="label">Processos ativos</div><div class="value">${total}</div></div>
+    <div class="kpi-card"><div class="label">Valor total em risco</div><div class="value">${fmtMoney(valorTotal)}</div></div>
+    <div class="kpi-card ${criticos>0?'alert':''}"><div class="label">Risco alto/crítico</div><div class="value">${criticos}</div></div>
+    <div class="kpi-card ${tarefasAtrasadas>0?'alert':''}"><div class="label">Acompanhamentos atrasados</div><div class="value">${tarefasAtrasadas||0}</div></div>
+  `;
+
+  const porBanco = {};
+  processosCache.forEach(p=>{ porBanco[p.banco]=porBanco[p.banco]||{n:0,v:0}; porBanco[p.banco].n++; porBanco[p.banco].v+=Number(p.valor_risco)||0; });
+  document.querySelector('#tbl-por-banco tbody').innerHTML = Object.entries(porBanco).sort((a,b)=>b[1].n-a[1].n)
+    .map(([b,v])=>`<tr><td>${b}</td><td>${v.n}</td><td>${fmtMoney(v.v)}</td></tr>`).join('') || '<tr><td colspan="3"><div class="empty-state">Sem dados.</div></td></tr>';
+
+  const porRisco = {};
+  processosCache.forEach(p=>{ porRisco[p.classificacao_risco]=porRisco[p.classificacao_risco]||{n:0,v:0}; porRisco[p.classificacao_risco].n++; porRisco[p.classificacao_risco].v+=Number(p.valor_risco)||0; });
+  document.querySelector('#tbl-por-risco tbody').innerHTML = ['CRITICO','ALTO','MEDIO','BAIXO'].filter(r=>porRisco[r])
+    .map(r=>`<tr><td><span class="badge badge-${r}">${r}</span></td><td>${porRisco[r].n}</td><td>${fmtMoney(porRisco[r].v)}</td></tr>`).join('') || '<tr><td colspan="3"><div class="empty-state">Sem dados.</div></td></tr>';
+
+  const porMotivo = {};
+  processosCache.forEach(p=>{ porMotivo[p.motivo]=(porMotivo[p.motivo]||0)+1; });
+  document.querySelector('#tbl-por-motivo tbody').innerHTML = Object.entries(porMotivo).sort((a,b)=>b[1]-a[1])
+    .map(([m,n])=>`<tr><td>${m}</td><td>${n}</td></tr>`).join('') || '<tr><td colspan="2"><div class="empty-state">Sem dados.</div></td></tr>';
+
+  // popula selects de filtro de motivo/risco
+  document.getElementById('f-motivo').innerHTML = '<option value="">Todos os motivos</option>' + [...new Set(processosCache.map(p=>p.motivo).filter(Boolean))].sort().map(m=>`<option value="${m}">${m}</option>`).join('');
+  document.getElementById('f-risco').innerHTML = '<option value="">Todos os riscos</option>' + ['BAIXO','MEDIO','ALTO','CRITICO'].map(r=>`<option value="${r}">${r}</option>`).join('');
+}
+
+async function carregarTarefas(){
+  const { data, error } = await sb.from('vw_tarefas_com_processo').select('*');
+  if(error){ toast('Erro ao carregar tarefas: '+error.message); return; }
+  const statusFiltro = document.getElementById('f-tarefa-status').value;
+  document.getElementById('f-tarefa-status').onchange = carregarTarefas;
+  const filtrado = statusFiltro ? data.filter(t=>t.status===statusFiltro) : data;
+  document.querySelector('#tbl-tarefas tbody').innerHTML = filtrado.length ? filtrado.map(t=>`
+    <tr>
+      <td>${fmtDate(t.data_prazo)}</td>
+      <td>${t.titulo}</td>
+      <td>${t.numero_processo}</td>
+      <td>${t.nome_cliente}</td>
+      <td>${t.responsavel||'—'}</td>
+      <td><span class="badge badge-${t.status}">${t.status}</span></td>
+      <td>${t.status!=='CONCLUIDA' ? `<button class="btn-ghost" onclick="concluirTarefa('${t.tarefa_id}','${t.processo_id}')">Concluir</button>` : ''}</td>
+    </tr>`).join('') : `<tr><td colspan="7"><div class="empty-state">Nenhuma tarefa encontrada.</div></td></tr>`;
+}
+
+// ---------------- NOVO PROCESSO ----------------
+function openNovoProcesso(){
+  preencherSelectDominio('np-banco','BANCO');
+  preencherSelectDominio('np-convenio','CONVENIO');
+  preencherSelectDominio('np-operacao','OPERACAO');
+  preencherSelectDominio('np-motivo','MOTIVO');
+  openModal('modal-novo-processo');
+}
+
+async function salvarNovoProcesso(){
+  const payload = {
+    numero_processo: document.getElementById('np-numero').value.trim(),
+    tribunal: document.getElementById('np-tribunal').value.trim(),
+    nome_cliente: document.getElementById('np-nome').value.trim(),
+    cpf: document.getElementById('np-cpf').value.trim(),
+    ade: document.getElementById('np-ade').value.trim(),
+    banco: document.getElementById('np-banco').value,
+    convenio: document.getElementById('np-convenio').value || null,
+    tipo_operacao: document.getElementById('np-operacao').value || null,
+    motivo: document.getElementById('np-motivo').value,
+    valor_operacao: document.getElementById('np-valor-operacao').value || null,
+    data_operacao: document.getElementById('np-data-operacao').value || null,
+    data_ajuizamento: document.getElementById('np-data-ajuizamento').value || null,
+    classificacao_risco: document.getElementById('np-risco').value,
+    valor_risco: document.getElementById('np-valor-risco').value || null,
+    situacao_atual: document.getElementById('np-situacao').value.trim() || 'AGUARDANDO CITAÇÃO/CIÊNCIA',
+    responsavel_cadastro: currentUser.id
+  };
+  if(!payload.numero_processo || !payload.nome_cliente || !payload.banco){
+    toast('Preencha ao menos número do processo, nome do cliente e banco.'); return;
+  }
+  const { error } = await sb.from('processos_judiciais').insert(payload);
+  if(error){ toast('Erro ao salvar: '+error.message); return; }
+  toast('Processo cadastrado com sucesso.');
+  closeModal('modal-novo-processo');
+  await carregarProcessos(); await carregarDashboard();
+}
+
+// ---------------- DETALHE DO PROCESSO ----------------
+async function abrirDetalhe(id){
+  processoAtualId = id;
+  const p = processosCache.find(x=>x.id===id);
+  document.getElementById('det-titulo').textContent = p.numero_processo;
+  document.getElementById('det-dados').innerHTML = `
+    <b>Cliente:</b> ${p.nome_cliente}<br>
+    <b>CPF:</b> ${p.cpf||'—'} &nbsp; <b>ADE:</b> ${p.ade||'—'}<br>
+    <b>Banco:</b> ${p.banco} &nbsp; <b>Tribunal:</b> ${p.tribunal||'—'}<br>
+    <b>Motivo:</b> ${p.motivo}<br>
+    <b>Convênio:</b> ${p.convenio||'—'} &nbsp; <b>Tipo de operação:</b> ${p.tipo_operacao||'—'}<br>
+    <b>Valor da operação:</b> ${fmtMoney(p.valor_operacao)} &nbsp; <b>Data operação:</b> ${fmtDate(p.data_operacao)}<br>
+    <b>Data de ajuizamento:</b> ${fmtDate(p.data_ajuizamento)}
+  `;
+  document.getElementById('det-risco').value = p.classificacao_risco;
+  document.getElementById('det-valor-risco').value = p.valor_risco || '';
+  document.getElementById('det-situacao').value = p.situacao_atual || '';
+  document.getElementById('mov-data').value = new Date().toISOString().slice(0,10);
+  document.getElementById('tarefa-prazo').value = '';
+  document.getElementById('tarefa-titulo').value = `Acompanhar processo ${p.numero_processo}`;
+
+  await carregarTimeline(id);
+  await carregarTarefasDoProcesso(id);
+  openModal('modal-detalhe');
+}
+
+async function salvarAtualizacaoProcesso(){
+  const risco = document.getElementById('det-risco').value;
+  const valorRisco = document.getElementById('det-valor-risco').value || null;
+  const situacao = document.getElementById('det-situacao').value.trim();
+  const { error } = await sb.from('processos_judiciais').update({
+    classificacao_risco: risco, valor_risco: valorRisco, situacao_atual: situacao
+  }).eq('id', processoAtualId);
+  if(error){ toast('Erro: '+error.message); return; }
+  toast('Processo atualizado.');
+  await carregarProcessos(); await carregarDashboard();
+  abrirDetalhe(processoAtualId);
+}
+
+async function carregarTimeline(processoId){
+  const { data, error } = await sb.from('movimentacoes_processo')
+    .select('*, usuarios_perfil(nome_exibicao)')
+    .eq('processo_id', processoId)
+    .order('data_movimentacao',{ascending:false});
+  if(error){ document.getElementById('det-timeline').innerHTML = ''; return; }
+  document.getElementById('det-timeline').innerHTML = data.length ? data.map(m=>`
+    <li><div class="tdate">${fmtDate(m.data_movimentacao)}</div><div class="tdesc">${m.descricao}</div>
+    <div class="tresp">${m.usuarios_perfil?.nome_exibicao || 'Responsável não identificado'}</div></li>
+  `).join('') : '<div class="empty-state">Nenhuma movimentação registrada ainda.</div>';
+}
+
+async function salvarMovimentacao(){
+  const data_movimentacao = document.getElementById('mov-data').value;
+  const descricao = document.getElementById('mov-desc').value.trim();
+  if(!data_movimentacao || !descricao){ toast('Preencha data e descrição da movimentação.'); return; }
+  const p = processosCache.find(x=>x.id===processoAtualId);
+  const { error } = await sb.from('movimentacoes_processo').insert({
+    processo_id: processoAtualId, data_movimentacao, descricao,
+    risco_no_momento: p.classificacao_risco, situacao_no_momento: p.situacao_atual,
+    responsavel_id: currentUser.id
+  });
+  if(error){ toast('Erro: '+error.message); return; }
+  document.getElementById('mov-desc').value='';
+  toast('Movimentação registrada.');
+  await carregarTimeline(processoAtualId);
+}
+
+async function carregarTarefasDoProcesso(processoId){
+  const { data, error } = await sb.from('tarefas_acompanhamento')
+    .select('*, usuarios_perfil(nome_exibicao)')
+    .eq('processo_id', processoId).order('data_prazo',{ascending:true});
+  if(error){ document.getElementById('det-tarefas').innerHTML=''; return; }
+  document.getElementById('det-tarefas').innerHTML = data.length ? data.map(t=>`
+    <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px solid #eee; font-size:13px;">
+      <div><b>${t.titulo}</b><br><span style="color:var(--textSecondary); font-size:11px;">Prazo: ${fmtDate(t.data_prazo)}</span></div>
+      <div><span class="badge badge-${t.status}">${t.status}</span>
+      ${t.status!=='CONCLUIDA' ? `<button class="btn-ghost" onclick="concluirTarefa('${t.id}','${processoId}')">Concluir</button>` : ''}</div>
+    </div>
+  `).join('') : '<div class="empty-state">Nenhuma tarefa para este processo.</div>';
+}
+
+async function criarTarefa(){
+  const titulo = document.getElementById('tarefa-titulo').value.trim();
+  const data_prazo = document.getElementById('tarefa-prazo').value;
+  if(!titulo || !data_prazo){ toast('Preencha o título e o prazo da tarefa.'); return; }
+  const { error } = await sb.from('tarefas_acompanhamento').insert({
+    processo_id: processoAtualId, titulo, data_prazo, responsavel_id: currentUser.id
+  });
+  if(error){ toast('Erro: '+error.message); return; }
+  toast('Tarefa criada.');
+  document.getElementById('tarefa-prazo').value='';
+  await carregarTarefasDoProcesso(processoAtualId);
+  await carregarTarefas();
+}
+
+// Concluir tarefa: pede a movimentação resultante do acompanhamento e fecha o ciclo
+async function concluirTarefa(tarefaId, processoId){
+  const descricao = prompt('Descreva a movimentação/atualização identificada ao concluir este acompanhamento:');
+  if(descricao===null) return;
+  const hoje = new Date().toISOString().slice(0,10);
+  const p = processosCache.find(x=>x.id===processoId) || {};
+
+  let movId = null;
+  if(descricao.trim()){
+    const { data: mov, error: movErr } = await sb.from('movimentacoes_processo').insert({
+      processo_id: processoId, data_movimentacao: hoje, descricao: descricao.trim(),
+      risco_no_momento: p.classificacao_risco, situacao_no_momento: p.situacao_atual,
+      responsavel_id: currentUser.id
+    }).select().single();
+    if(!movErr) movId = mov.id;
+  }
+  const { error } = await sb.from('tarefas_acompanhamento').update({
+    status:'CONCLUIDA', concluido_em: new Date().toISOString(), movimentacao_gerada_id: movId
+  }).eq('id', tarefaId);
+  if(error){ toast('Erro: '+error.message); return; }
+  toast('Acompanhamento concluído.');
+  await carregarTarefas();
+  if(document.getElementById('modal-detalhe').classList.contains('active')){
+    await carregarTimeline(processoId); await carregarTarefasDoProcesso(processoId);
+  }
+}
+
+// ---------------- USUÁRIOS (admin) ----------------
+async function carregarUsuarios(){
+  const tbody = document.querySelector('#tbl-usuarios tbody');
+  tbody.innerHTML = `<tr><td colspan="5"><div class="empty-state">Carregando...</div></td></tr>`;
+  try{
+    const { usuarios } = await chamarAdminUsuarios({ action:'listar' });
+    tbody.innerHTML = usuarios.length ? usuarios.map(u=>`
+      <tr>
+        <td>${u.nome_exibicao}</td>
+        <td>${u.email}</td>
+        <td>${u.is_admin ? 'Sim' : 'Não'}</td>
+        <td><span class="badge ${u.ativo && !u.banido ? 'badge-BAIXO' : 'badge-ATRASADA'}">${u.ativo && !u.banido ? 'Ativo' : 'Desativado'}</span></td>
+        <td>
+          <button class="btn-ghost" onclick="redefinirSenhaUsuario('${u.id}')">Redefinir senha</button>
+          <button class="btn-ghost" onclick="alterarStatusUsuario('${u.id}', ${!(u.ativo && !u.banido)})">${u.ativo && !u.banido ? 'Desativar' : 'Reativar'}</button>
+        </td>
+      </tr>`).join('') : `<tr><td colspan="5"><div class="empty-state">Nenhum usuário cadastrado ainda.</div></td></tr>`;
+  }catch(e){
+    tbody.innerHTML = `<tr><td colspan="5"><div class="empty-state">${e.message}</div></td></tr>`;
+  }
+}
+
+async function criarUsuario(){
+  const nome_exibicao = document.getElementById('nu-nome').value.trim();
+  const email = document.getElementById('nu-email').value.trim();
+  const is_admin = document.getElementById('nu-admin').checked;
+  if(!nome_exibicao || !email){ toast('Preencha nome e e-mail.'); return; }
+  try{
+    const { senha_provisoria } = await chamarAdminUsuarios({ action:'criar', email, nome_exibicao, is_admin });
+    closeModal('modal-novo-usuario');
+    document.getElementById('nu-nome').value=''; document.getElementById('nu-email').value=''; document.getElementById('nu-admin').checked=false;
+    alert(`Usuário criado.\nE-mail: ${email}\nSenha provisória: ${senha_provisoria}\n\nRepasse essa senha pra pessoa — ela pode trocar depois em "Esqueci minha senha".`);
+    await carregarUsuarios();
+  }catch(e){ toast('Erro: '+e.message); }
+}
+
+async function redefinirSenhaUsuario(user_id){
+  if(!confirm('Gerar uma nova senha provisória para esse usuário?')) return;
+  try{
+    const { nova_senha } = await chamarAdminUsuarios({ action:'redefinir_senha', user_id });
+    alert(`Nova senha provisória: ${nova_senha}\n\nRepasse pra pessoa — ela pode trocar depois em "Esqueci minha senha".`);
+  }catch(e){ toast('Erro: '+e.message); }
+}
+
+async function alterarStatusUsuario(user_id, ativo){
+  if(!confirm(ativo ? 'Reativar o acesso desse usuário?' : 'Desativar o acesso desse usuário? Ele não conseguirá mais entrar no sistema.')) return;
+  try{
+    await chamarAdminUsuarios({ action:'alterar_status', user_id, ativo });
+    toast(ativo ? 'Usuário reativado.' : 'Usuário desativado.');
+    await carregarUsuarios();
+  }catch(e){ toast('Erro: '+e.message); }
+}
+</script>
+</body>
+</html>
