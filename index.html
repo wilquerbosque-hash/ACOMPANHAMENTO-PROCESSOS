@@ -361,40 +361,51 @@
     <div class="grid-2">
       <div>
         <div class="section-label">Dados do processo</div>
-        <div class="form-row">
-          <div><label>Nome completo do cliente</label><input id="det-nome"></div>
-          <div><label>CPF</label><input id="det-cpf"></div>
+        <div id="det-view" style="font-size:13px; line-height:1.9;"></div>
+        <div id="det-admin-actions" style="display:none; gap:8px; margin:10px 0 4px;">
+          <button class="btn-secondary" onclick="abrirEdicaoProcesso()">Editar</button>
+          <button class="btn-danger" onclick="excluirProcesso()">Excluir processo</button>
         </div>
-        <div class="form-row">
-          <div><label>ADE do contrato</label><input id="det-ade"></div>
-          <div><label>Tribunal</label><input id="det-tribunal" placeholder="TJBA, TJSP, TRF1..."></div>
-        </div>
-        <div class="form-row">
-          <div><label>Banco</label><select id="det-banco" onchange="tratarNovoValorDominio('det-banco','BANCO')"></select></div>
-          <div><label>Convênio</label><select id="det-convenio" onchange="tratarNovoValorDominio('det-convenio','CONVENIO')"></select></div>
-        </div>
-        <div class="form-row">
-          <div><label>Tipo de operação</label><select id="det-operacao" onchange="tratarNovoValorDominio('det-operacao','OPERACAO')"></select></div>
-          <div><label>Motivo da ação</label><select id="det-motivo" onchange="tratarNovoValorDominio('det-motivo','MOTIVO')"></select></div>
-        </div>
-        <div class="form-row">
-          <div><label>Valor da operação (R$)</label><input id="det-valor-operacao" type="number" step="0.01"></div>
-          <div><label>Data da operação</label><input id="det-data-operacao" type="date"></div>
-        </div>
-        <div class="form-row single"><div><label>Data de ajuizamento</label><input id="det-data-ajuizamento" type="date"></div></div>
 
-        <div class="section-label">Risco e situação</div>
-        <div class="form-row">
-          <div><label>Classificação de risco</label>
-            <select id="det-risco">
-              <option value="BAIXO">Baixo</option><option value="MEDIO">Médio</option>
-              <option value="ALTO">Alto</option><option value="CRITICO">Crítico</option>
-            </select>
+        <div id="det-edit-form" style="display:none;">
+          <div class="form-row">
+            <div><label>Nome completo do cliente</label><input id="det-nome"></div>
+            <div><label>CPF</label><input id="det-cpf"></div>
           </div>
-          <div><label>Valor em risco (R$)</label><input id="det-valor-risco" type="number" step="0.01"></div>
+          <div class="form-row">
+            <div><label>ADE do contrato</label><input id="det-ade"></div>
+            <div><label>Tribunal</label><input id="det-tribunal" placeholder="TJBA, TJSP, TRF1..."></div>
+          </div>
+          <div class="form-row">
+            <div><label>Banco</label><select id="det-banco" onchange="tratarNovoValorDominio('det-banco','BANCO')"></select></div>
+            <div><label>Convênio</label><select id="det-convenio" onchange="tratarNovoValorDominio('det-convenio','CONVENIO')"></select></div>
+          </div>
+          <div class="form-row">
+            <div><label>Tipo de operação</label><select id="det-operacao" onchange="tratarNovoValorDominio('det-operacao','OPERACAO')"></select></div>
+            <div><label>Motivo da ação</label><select id="det-motivo" onchange="tratarNovoValorDominio('det-motivo','MOTIVO')"></select></div>
+          </div>
+          <div class="form-row">
+            <div><label>Valor da operação (R$)</label><input id="det-valor-operacao" type="number" step="0.01"></div>
+            <div><label>Data da operação</label><input id="det-data-operacao" type="date"></div>
+          </div>
+          <div class="form-row single"><div><label>Data de ajuizamento</label><input id="det-data-ajuizamento" type="date"></div></div>
+
+          <div class="section-label">Risco e situação</div>
+          <div class="form-row">
+            <div><label>Classificação de risco</label>
+              <select id="det-risco">
+                <option value="BAIXO">Baixo</option><option value="MEDIO">Médio</option>
+                <option value="ALTO">Alto</option><option value="CRITICO">Crítico</option>
+              </select>
+            </div>
+            <div><label>Valor em risco (R$)</label><input id="det-valor-risco" type="number" step="0.01"></div>
+          </div>
+          <div class="form-row single"><div><label>Situação atual</label><input id="det-situacao"></div></div>
+          <div class="form-actions" style="justify-content:flex-start;">
+            <button class="btn-primary" style="width:auto" onclick="salvarAtualizacaoProcesso()">Salvar dados do processo</button>
+            <button class="btn-secondary" onclick="cancelarEdicaoProcesso()">Cancelar</button>
+          </div>
         </div>
-        <div class="form-row single"><div><label>Situação atual</label><input id="det-situacao"></div></div>
-        <button class="btn-secondary" onclick="salvarAtualizacaoProcesso()">Salvar dados do processo</button>
 
         <div class="section-label">Nova tarefa de acompanhamento</div>
         <div class="form-row">
@@ -725,11 +736,40 @@ async function salvarNovoProcesso(){
 }
 
 // ---------------- DETALHE DO PROCESSO ----------------
+function renderDetView(p){
+  document.getElementById('det-view').innerHTML = `
+    <b>Cliente:</b> ${p.nome_cliente}<br>
+    <b>CPF:</b> ${p.cpf||'—'} &nbsp; <b>ADE:</b> ${p.ade||'—'}<br>
+    <b>Banco:</b> ${p.banco} &nbsp; <b>Tribunal:</b> ${p.tribunal||'—'}<br>
+    <b>Convênio:</b> ${p.convenio||'—'} &nbsp; <b>Tipo de operação:</b> ${p.tipo_operacao||'—'}<br>
+    <b>Motivo:</b> ${p.motivo}<br>
+    <b>Valor da operação:</b> ${fmtMoney(p.valor_operacao)} &nbsp; <b>Data operação:</b> ${fmtDate(p.data_operacao)}<br>
+    <b>Data de ajuizamento:</b> ${fmtDate(p.data_ajuizamento)}<br>
+    <b>Risco:</b> <span class="badge badge-${p.classificacao_risco}">${p.classificacao_risco}</span> &nbsp; <b>Valor em risco:</b> ${fmtMoney(p.valor_risco)}<br>
+    <b>Situação atual:</b> ${p.situacao_atual||'—'}
+  `;
+}
+
 async function abrirDetalhe(id){
   processoAtualId = id;
   const p = processosCache.find(x=>x.id===id);
   document.getElementById('det-titulo').textContent = p.numero_processo;
 
+  renderDetView(p);
+  document.getElementById('det-edit-form').style.display = 'none';
+  document.getElementById('det-admin-actions').style.display = currentUserIsAdmin ? 'flex' : 'none';
+
+  document.getElementById('mov-data').value = new Date().toISOString().slice(0,10);
+  document.getElementById('tarefa-prazo').value = '';
+  document.getElementById('tarefa-titulo').value = `Acompanhar processo ${p.numero_processo}`;
+
+  await carregarTimeline(id);
+  await carregarTarefasDoProcesso(id);
+  openModal('modal-detalhe');
+}
+
+function abrirEdicaoProcesso(){
+  const p = processosCache.find(x=>x.id===processoAtualId);
   document.getElementById('det-nome').value = p.nome_cliente || '';
   document.getElementById('det-cpf').value = p.cpf || '';
   document.getElementById('det-ade').value = p.ade || '';
@@ -741,17 +781,14 @@ async function abrirDetalhe(id){
   document.getElementById('det-valor-operacao').value = p.valor_operacao || '';
   document.getElementById('det-data-operacao').value = p.data_operacao || '';
   document.getElementById('det-data-ajuizamento').value = p.data_ajuizamento || '';
-
   document.getElementById('det-risco').value = p.classificacao_risco;
   document.getElementById('det-valor-risco').value = p.valor_risco || '';
   document.getElementById('det-situacao').value = p.situacao_atual || '';
-  document.getElementById('mov-data').value = new Date().toISOString().slice(0,10);
-  document.getElementById('tarefa-prazo').value = '';
-  document.getElementById('tarefa-titulo').value = `Acompanhar processo ${p.numero_processo}`;
+  document.getElementById('det-edit-form').style.display = 'block';
+}
 
-  await carregarTimeline(id);
-  await carregarTarefasDoProcesso(id);
-  openModal('modal-detalhe');
+function cancelarEdicaoProcesso(){
+  document.getElementById('det-edit-form').style.display = 'none';
 }
 
 async function salvarAtualizacaoProcesso(){
@@ -772,10 +809,20 @@ async function salvarAtualizacaoProcesso(){
     situacao_atual: document.getElementById('det-situacao').value.trim()
   };
   const { error } = await sb.from('processos_judiciais').update(payload).eq('id', processoAtualId);
-  if(error){ toast('Erro: '+error.message); return; }
+  if(error){ toast('Erro: '+error.message+' (só administradores podem editar um processo)'); return; }
   toast('Dados do processo atualizados.');
   await carregarProcessos(); await carregarDashboard();
   abrirDetalhe(processoAtualId);
+}
+
+async function excluirProcesso(){
+  const p = processosCache.find(x=>x.id===processoAtualId);
+  if(!confirm(`Excluir o processo ${p.numero_processo}? Isso também apaga o histórico de movimentações e as tarefas ligadas a ele. Essa ação não pode ser desfeita.`)) return;
+  const { error } = await sb.from('processos_judiciais').delete().eq('id', processoAtualId);
+  if(error){ toast('Erro: '+error.message+' (só administradores podem excluir um processo)'); return; }
+  toast('Processo excluído.');
+  closeModal('modal-detalhe');
+  await carregarProcessos(); await carregarDashboard(); await carregarTarefas();
 }
 
 async function carregarTimeline(processoId){
