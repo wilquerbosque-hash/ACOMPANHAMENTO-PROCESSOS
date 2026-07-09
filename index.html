@@ -316,15 +316,15 @@
     <!-- ---------- MÉTRICAS MENSAIS ---------- -->
     <section id="view-metricas" class="view">
       <div class="page-head">
-        <div><h2>Métricas mensais</h2><p>Volume global de operações e quantas foram contestadas, mês a mês</p></div>
+        <div><h2>Métricas mensais</h2><p>Volume global de operações e quantas já foram judicializadas, mês a mês</p></div>
         <button class="btn-secondary" onclick="abrirNovoMes()">+ Registrar mês</button>
       </div>
       <div id="form-novo-mes" style="display:none;" class="panel">
         <div class="form-row">
-          <div><label>Mês de referência</label><input id="nm-competencia" type="month"></div>
+          <div><label>Mês de referência</label><input id="nm-competencia" type="month" onchange="atualizarPreviewJudicializadas()"></div>
           <div><label>Total de operações no mês</label><input id="nm-total-operacoes" type="number" min="0"></div>
         </div>
-        <div class="form-row single"><div><label>Quantas dessas operações já foram contestadas até hoje</label><input id="nm-total-contestadas" type="number" min="0"></div></div>
+        <div class="field-note" style="margin:-4px 0 14px;">Judicializadas até hoje: <b id="nm-judicializadas-preview" style="color:var(--textPrimary);">0</b> — calculado automaticamente a partir dos processos com essa data de operação que já têm data de ajuizamento preenchida. Não precisa digitar.</div>
         <div class="form-actions">
           <button class="btn-secondary" onclick="fecharNovoMes()">Cancelar</button>
           <button class="btn-primary" style="width:auto" onclick="salvarMetricaMensal()">Salvar mês</button>
@@ -332,7 +332,7 @@
       </div>
       <div class="panel">
         <div class="table-wrap"><table id="tbl-metricas">
-          <thead><tr><th>Mês</th><th>Operações</th><th>Contestadas</th><th>% contestação</th><th>Atualizado em</th></tr></thead>
+          <thead><tr><th>Mês</th><th>Operações</th><th>Judicializadas até hoje</th><th>% judicialização</th><th>Atualizado em</th></tr></thead>
           <tbody></tbody>
         </table></div>
       </div>
@@ -875,17 +875,25 @@ function fmtMesAno(dataStr){
   return `${nomes[parseInt(mes,10)-1]}/${ano}`;
 }
 
+function contarJudicializadasNoMes(mesStr){
+  // mesStr no formato 'YYYY-MM'. Conta processos cuja operação foi celebrada
+  // naquele mês e que já têm data de ajuizamento preenchida (ou seja, já viraram processo).
+  return processosCache.filter(p => p.data_operacao && p.data_operacao.slice(0,7)===mesStr && p.data_ajuizamento).length;
+}
+
 async function carregarMetricas(){
   const { data, error } = await sb.from('metricas_mensais').select('*, usuarios_perfil(nome_exibicao)').order('competencia',{ascending:false});
   if(error){ toast('Erro ao carregar métricas: '+error.message); return; }
 
   const tbody = document.querySelector('#tbl-metricas tbody');
   tbody.innerHTML = data.length ? data.map(m=>{
-    const pct = m.total_operacoes ? Math.round(m.total_contestadas/m.total_operacoes*1000)/10 : 0;
+    const mesStr = m.competencia.slice(0,7);
+    const judicializadas = contarJudicializadasNoMes(mesStr); // sempre recalculado, reflete o "até hoje"
+    const pct = m.total_operacoes ? Math.round(judicializadas/m.total_operacoes*1000)/10 : 0;
     return `<tr>
       <td>${fmtMesAno(m.competencia)}</td>
       <td>${m.total_operacoes}</td>
-      <td>${m.total_contestadas}</td>
+      <td>${judicializadas}</td>
       <td>${pct}%</td>
       <td style="font-size:11px; color:var(--textSecondary);">${new Date(m.atualizado_em).toLocaleDateString('pt-BR')} · ${m.usuarios_perfil?.nome_exibicao||'—'}</td>
     </tr>`;
@@ -907,11 +915,16 @@ async function carregarMetricas(){
   }
 }
 
+function atualizarPreviewJudicializadas(){
+  const mesStr = document.getElementById('nm-competencia').value;
+  document.getElementById('nm-judicializadas-preview').textContent = mesStr ? contarJudicializadasNoMes(mesStr) : '0';
+}
+
 function abrirNovoMes(competenciaPreenchida){
   document.getElementById('form-novo-mes').style.display = 'block';
   document.getElementById('nm-competencia').value = competenciaPreenchida || new Date().toISOString().slice(0,7);
   document.getElementById('nm-total-operacoes').value = '';
-  document.getElementById('nm-total-contestadas').value = '';
+  atualizarPreviewJudicializadas();
 }
 function fecharNovoMes(){
   document.getElementById('form-novo-mes').style.display = 'none';
@@ -919,11 +932,11 @@ function fecharNovoMes(){
 async function salvarMetricaMensal(){
   const competenciaMes = document.getElementById('nm-competencia').value;
   const totalOperacoes = document.getElementById('nm-total-operacoes').value;
-  const totalContestadas = document.getElementById('nm-total-contestadas').value;
   if(!competenciaMes || totalOperacoes===''){ toast('Preencha o mês e o total de operações.'); return; }
   const competencia = competenciaMes + '-01';
+  const judicializadas = contarJudicializadasNoMes(competenciaMes);
   const { error } = await sb.from('metricas_mensais').upsert({
-    competencia, total_operacoes: Number(totalOperacoes), total_contestadas: Number(totalContestadas)||0,
+    competencia, total_operacoes: Number(totalOperacoes), total_contestadas: judicializadas,
     atualizado_por: currentUser.id
   }, { onConflict: 'competencia' });
   if(error){ toast('Erro: '+error.message); return; }
