@@ -12,7 +12,7 @@
     --konsiTeal:#17AC8E;
     --konsiTealLight:#3FD6B4;
     --konsiTealDark:#0F7C64;
-    --bgBlack:#0E0D0B;
+    --bgBlack:#11100C;
     --surface1:#18170F1A;
     --surfaceCard:#1B1A17;
     --surfaceCardAlt:#221F1B;
@@ -35,7 +35,7 @@
   /* ---------- LOGIN ---------- */
   #login-screen{
     min-height:100vh; display:flex; align-items:center; justify-content:center;
-    background:radial-gradient(circle at 50% 0%, #17140F 0%, var(--bgBlack) 60%);
+    background:var(--bgBlack);
   }
   .login-card{
     background:var(--surfaceCard); border:1px solid var(--border); border-radius:16px; padding:36px 36px 32px; width:380px;
@@ -66,7 +66,7 @@
   /* ---------- APP SHELL ---------- */
   #app{ display:none; min-height:100vh; }
   header.topbar{
-    background:#000000; border-bottom:1px solid var(--border); color:#fff; display:flex; align-items:center;
+    background:var(--bgBlack); border-bottom:1px solid var(--border); color:#fff; display:flex; align-items:center;
     justify-content:space-between; padding:0 28px; height:64px; position:sticky; top:0; z-index:20;
   }
   nav.tabs{ display:flex; gap:4px; }
@@ -213,58 +213,59 @@
 
 <!-- ============ LOGIN ============ -->
 <div id="login-screen">
-  <div class="login-card" id="login-form-wrap">
-    <div class="logo-mark"><img src="assets/logo-konsi.png" alt="Konsi"></div>
-    <h1>Jurídico · Acompanhamento de Processos</h1>
-    <div id="login-error"></div>
-    <label>E-mail</label>
-    <div class="input-icon-wrap">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="6" width="16" height="12" rx="1.5"/><path d="m4 7 8 6 8-6"/></svg>
-      <input type="email" id="login-email" placeholder="voce@konsi.com.br">
-    </div>
-    <label>Senha</label>
-    <div class="input-icon-wrap">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
-      <input type="password" id="login-password" placeholder="••••••••">
-    </div>
-    <button class="btn-primary" onclick="doLogin()">Entrar</button>
-    <div style="text-align:center; margin-top:14px;">
-      <button class="btn-ghost" style="font-size:12px; padding:4px;" onclick="abrirEsqueciSenha()">Esqueci minha senha</button>
-    </div>
-  </div>
+  <div style="display:flex; flex-direction:column; align-items:center; width:100%; max-width:380px;">
+    <img src="assets/logo-konsi.png" alt="Konsi" style="height:64px; width:auto; margin-bottom:32px;">
 
-  <div class="login-card" id="esqueci-senha-wrap" style="display:none;">
-    <div class="logo-mark"><img src="assets/logo-konsi.png" alt="Konsi"></div>
-    <h1>Recuperar acesso</h1>
-    <div id="esqueci-msg"></div>
-    <label>E-mail cadastrado</label>
-    <div class="input-icon-wrap">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="6" width="16" height="12" rx="1.5"/><path d="m4 7 8 6 8-6"/></svg>
-      <input type="email" id="esqueci-email" placeholder="voce@konsi.com.br">
+    <div class="login-card" id="login-form-wrap" style="width:100%;">
+      <h1>Jurídico · Acompanhamento de Processos</h1>
+      <div id="login-error"></div>
+      <label>E-mail</label>
+      <div class="input-icon-wrap">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="6" width="16" height="12" rx="1.5"/><path d="m4 7 8 6 8-6"/></svg>
+        <input type="email" id="login-email" placeholder="voce@konsi.com.br">
+      </div>
+      <label>Senha</label>
+      <div class="input-icon-wrap">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+        <input type="password" id="login-password" placeholder="••••••••">
+      </div>
+      <button class="btn-primary" onclick="doLogin()">Entrar</button>
+      <div style="text-align:center; margin-top:14px;">
+        <button class="btn-ghost" style="font-size:12px; padding:4px;" onclick="abrirEsqueciSenha()">Esqueci minha senha</button>
+      </div>
     </div>
-    <button class="btn-primary" onclick="enviarRecuperacaoSenha()">Enviar link de recuperação</button>
-    <div style="text-align:center; margin-top:14px;">
-      <button class="btn-ghost" style="font-size:12px; padding:4px;" onclick="voltarParaLogin()">Voltar para o login</button>
-    </div>
-  </div>
 
-  <div class="login-card" id="nova-senha-wrap" style="display:none;">
-    <div class="logo-mark"><img src="assets/logo-konsi.png" alt="Konsi"></div>
-    <h1>Defina sua nova senha</h1>
-    <div id="nova-senha-msg"></div>
-    <label>Nova senha</label>
-    <div class="input-icon-wrap">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
-      <input type="password" id="nova-senha-input" placeholder="••••••••">
+    <div class="login-card" id="esqueci-senha-wrap" style="width:100%; display:none;">
+      <h1>Recuperar acesso</h1>
+      <div id="esqueci-msg"></div>
+      <label>E-mail cadastrado</label>
+      <div class="input-icon-wrap">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="6" width="16" height="12" rx="1.5"/><path d="m4 7 8 6 8-6"/></svg>
+        <input type="email" id="esqueci-email" placeholder="voce@konsi.com.br">
+      </div>
+      <button class="btn-primary" onclick="enviarRecuperacaoSenha()">Enviar link de recuperação</button>
+      <div style="text-align:center; margin-top:14px;">
+        <button class="btn-ghost" style="font-size:12px; padding:4px;" onclick="voltarParaLogin()">Voltar para o login</button>
+      </div>
     </div>
-    <button class="btn-primary" onclick="salvarNovaSenha()">Salvar nova senha</button>
+
+    <div class="login-card" id="nova-senha-wrap" style="width:100%; display:none;">
+      <h1>Defina sua nova senha</h1>
+      <div id="nova-senha-msg"></div>
+      <label>Nova senha</label>
+      <div class="input-icon-wrap">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+        <input type="password" id="nova-senha-input" placeholder="••••••••">
+      </div>
+      <button class="btn-primary" onclick="salvarNovaSenha()">Salvar nova senha</button>
+    </div>
   </div>
 </div>
 
 <!-- ============ APP ============ -->
 <div id="app">
   <header class="topbar">
-    <div class="logo-mark" style="margin-bottom:0;"><img src="assets/logo-konsi.png" alt="Konsi" style="height:26px;"></div>
+    <div class="logo-mark" style="margin-bottom:0;"><img src="assets/logo-konsi.png" alt="Konsi" style="height:38px;"></div>
     <nav class="tabs">
       <button data-view="dashboard" class="active" onclick="showView('dashboard')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px; margin-right:5px;"><rect x="3" y="3" width="8" height="8" rx="1"/><rect x="13" y="3" width="8" height="5" rx="1"/><rect x="13" y="12" width="8" height="9" rx="1"/><rect x="3" y="14" width="8" height="7" rx="1"/></svg>Dashboard</button>
       <button data-view="processos" onclick="showView('processos')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px; margin-right:5px;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>Processos</button>
