@@ -362,7 +362,7 @@
       </div>
       <div class="panel">
         <div class="table-wrap"><table id="tbl-metricas">
-          <thead><tr><th>Mês</th><th>Operações</th><th>Judicializadas até hoje</th><th>% judicialização</th><th>Atualizado em</th></tr></thead>
+          <thead><tr><th>Mês</th><th>Operações</th><th>Judicializadas até hoje</th><th>% judicialização</th><th>Atualizado em</th><th></th></tr></thead>
           <tbody></tbody>
         </table></div>
       </div>
@@ -624,6 +624,7 @@ let processoAtualId = null;
 let opcoesCache = { BANCO:[], CONVENIO:[], OPERACAO:[], MOTIVO:[] };
 let cohortCache = [];
 let bancoCache = [];
+let metricasCache = [];
 const RESULTADO_LABEL = { EM_ANDAMENTO:'Em andamento', GANHO:'Ganho', PERDIDO:'Perdido', PARCIAL:'Parcial' };
 
 function toast(msg){
@@ -993,6 +994,7 @@ function contarJudicializadasNoMes(mesStr){
 async function carregarMetricas(){
   const { data, error } = await sb.from('metricas_mensais').select('*, usuarios_perfil(nome_exibicao)').order('competencia',{ascending:false});
   if(error){ toast('Erro ao carregar métricas: '+error.message); return; }
+  metricasCache = data;
 
   const tbody = document.querySelector('#tbl-metricas tbody');
   tbody.innerHTML = data.length ? data.map(m=>{
@@ -1005,8 +1007,12 @@ async function carregarMetricas(){
       <td>${judicializadas}</td>
       <td>${pct}%</td>
       <td style="font-size:11px; color:var(--textSecondary);">${new Date(m.atualizado_em).toLocaleDateString('pt-BR')} · ${m.usuarios_perfil?.nome_exibicao||'—'}</td>
+      <td style="white-space:nowrap;">
+        <button class="btn-ghost" onclick="editarMetrica('${mesStr}')">Editar</button>
+        ${currentUserIsAdmin ? `<button class="btn-ghost" style="color:var(--erro);" onclick="excluirMetrica('${m.competencia}')">Excluir</button>` : ''}
+      </td>
     </tr>`;
-  }).join('') : `<tr><td colspan="5">${emptyState('Nenhum mês registrado ainda', 'Clique em "+ Registrar mês" para começar.')}</td></tr>`;
+  }).join('') : `<tr><td colspan="6">${emptyState('Nenhum mês registrado ainda', 'Clique em "+ Registrar mês" para começar.')}</td></tr>`;
 
   // Checa se o mês anterior ao atual já foi alimentado
   const hoje = new Date();
@@ -1032,11 +1038,30 @@ function atualizarPreviewJudicializadas(){
 function abrirNovoMes(competenciaPreenchida){
   document.getElementById('form-novo-mes').style.display = 'block';
   document.getElementById('nm-competencia').value = competenciaPreenchida || new Date().toISOString().slice(0,7);
+  document.getElementById('nm-competencia').disabled = false;
   document.getElementById('nm-total-operacoes').value = '';
   atualizarPreviewJudicializadas();
 }
 function fecharNovoMes(){
   document.getElementById('form-novo-mes').style.display = 'none';
+  document.getElementById('nm-competencia').disabled = false;
+}
+function editarMetrica(mesStr){
+  const m = metricasCache.find(x=>x.competencia.slice(0,7)===mesStr);
+  if(!m) return;
+  document.getElementById('form-novo-mes').style.display = 'block';
+  document.getElementById('nm-competencia').value = mesStr;
+  document.getElementById('nm-competencia').disabled = true; // não deixa trocar o mês numa edição, pra não criar linha duplicada
+  document.getElementById('nm-total-operacoes').value = m.total_operacoes;
+  atualizarPreviewJudicializadas();
+  document.getElementById('form-novo-mes').scrollIntoView({behavior:'smooth', block:'center'});
+}
+async function excluirMetrica(competencia){
+  if(!confirm(`Excluir o registro de ${fmtMesAno(competencia)}? Essa ação não pode ser desfeita.`)) return;
+  const { error } = await sb.from('metricas_mensais').delete().eq('competencia', competencia);
+  if(error){ toast('Erro: '+error.message+' (só administradores podem excluir um mês)'); return; }
+  toast('Registro excluído.');
+  await carregarMetricas();
 }
 async function salvarMetricaMensal(){
   const competenciaMes = document.getElementById('nm-competencia').value;
@@ -1049,7 +1074,7 @@ async function salvarMetricaMensal(){
     atualizado_por: currentUser.id
   }, { onConflict: 'competencia' });
   if(error){ toast('Erro: '+error.message); return; }
-  toast('Mês registrado.');
+  toast('Mês salvo.');
   fecharNovoMes();
   await carregarMetricas();
 }
