@@ -452,7 +452,7 @@
     <p class="field-note">Não encontrou o banco, convênio, tipo de operação ou motivo na lista? Escolha "+ Adicionar novo..." no campo — o valor fica salvo para as próximas vezes.</p>
     <div class="form-row">
       <div><label>Número do processo</label><input id="np-numero" placeholder="0000000-00.0000.0.00.0000" onblur="identificarTribunalAutomatico('np-numero','np-tribunal')"></div>
-      <div><label>Tribunal</label><input id="np-tribunal" placeholder="TJBA, TJSP, TRF1..."></div>
+      <div><label>Tribunal</label><select id="np-tribunal"><option value="">Selecione...</option></select></div>
     </div>
     <div class="form-row">
       <div><label>Nome completo do cliente</label><input id="np-nome"></div>
@@ -524,7 +524,7 @@
           </div>
           <div class="form-row">
             <div><label>ADE do contrato</label><input id="det-ade"></div>
-            <div><label>Tribunal</label><input id="det-tribunal" placeholder="TJBA, TJSP, TRF1..."></div>
+            <div><label>Tribunal</label><select id="det-tribunal"><option value="">Selecione...</option></select></div>
           </div>
           <div class="form-row">
             <div><label>Banco</label><select id="det-banco" onchange="tratarNovoValorDominio('det-banco','BANCO')"></select></div>
@@ -1188,13 +1188,39 @@ async function salvarMetricaMensal(){
 }
 
 // ---------------- NOVO PROCESSO ----------------
+// Lista de siglas de tribunais (TJSP, TJBA, TRF1...), carregada uma única vez
+// da tabela tribunais_cnj e reaproveitada para preencher os selects.
+let TRIBUNAIS_SIGLAS_CACHE = null;
+async function getTribunaisSiglas(){
+  if(TRIBUNAIS_SIGLAS_CACHE) return TRIBUNAIS_SIGLAS_CACHE;
+  const { data, error } = await sb.from('tribunais_cnj').select('sigla').order('sigla');
+  if(error){
+    console.error('Erro ao carregar lista de tribunais:', error);
+    return [];
+  }
+  TRIBUNAIS_SIGLAS_CACHE = [...new Set(data.map(r => r.sigla).filter(Boolean))].sort();
+  return TRIBUNAIS_SIGLAS_CACHE;
+}
+
+// Popula um <select> de tribunal com as siglas, preservando o valor já
+// selecionado (usado tanto no cadastro quanto na edição).
+async function preencherSelectTribunais(id){
+  const select = document.getElementById(id);
+  const valorAtual = select.value;
+  const siglas = await getTribunaisSiglas();
+  select.innerHTML = '<option value="">Selecione...</option>' +
+    siglas.map(s => `<option value="${s}">${s}</option>`).join('');
+  if(valorAtual) select.value = valorAtual;
+}
+
 // Identifica o tribunal automaticamente a partir do número CNJ, chamando a
-// função fn_identificar_tribunal criada no Supabase. Só preenche o campo se
-// ele estiver vazio, pra não sobrescrever uma edição manual da pessoa.
+// função fn_identificar_tribunal criada no Supabase. Roda sempre que o campo
+// número perde o foco, atualizando o select mesmo que já tivesse um valor —
+// assim, corrigir o número também corrige o tribunal.
 async function identificarTribunalAutomatico(idCampoNumero, idCampoTribunal){
   const numero = document.getElementById(idCampoNumero).value.trim();
   const campoTribunal = document.getElementById(idCampoTribunal);
-  if(!numero || campoTribunal.value.trim()) return;
+  if(!numero) return;
 
   const { data, error } = await sb.rpc('fn_identificar_tribunal', { p_numero: numero });
   if(error){
@@ -1202,9 +1228,13 @@ async function identificarTribunalAutomatico(idCampoNumero, idCampoTribunal){
     return;
   }
   if(data){
+    // garante que o select já está populado antes de tentar marcar o valor
+    if(!campoTribunal.options || campoTribunal.options.length <= 1){
+      await preencherSelectTribunais(idCampoTribunal);
+    }
     campoTribunal.value = data;
   } else {
-    toast('Não foi possível identificar o tribunal a partir desse número. Confira o formato ou preencha manualmente.');
+    toast('Não foi possível identificar o tribunal a partir desse número. Confira o formato ou selecione manualmente.');
   }
 }
 
@@ -1213,6 +1243,7 @@ function openNovoProcesso(){
   preencherSelectDominio('np-convenio','CONVENIO');
   preencherSelectDominio('np-operacao','OPERACAO');
   preencherSelectDominio('np-motivo','MOTIVO');
+  preencherSelectTribunais('np-tribunal');
   openModal('modal-novo-processo');
 }
 
@@ -1290,11 +1321,12 @@ async function abrirDetalhe(id){
   openModal('modal-detalhe');
 }
 
-function abrirEdicaoProcesso(){
+async function abrirEdicaoProcesso(){
   const p = processosCache.find(x=>x.id===processoAtualId);
   document.getElementById('det-nome').value = p.nome_cliente || '';
   document.getElementById('det-cpf').value = p.cpf || '';
   document.getElementById('det-ade').value = p.ade || '';
+  await preencherSelectTribunais('det-tribunal');
   document.getElementById('det-tribunal').value = p.tribunal || '';
   preencherSelectDominio('det-banco','BANCO', p.banco);
   preencherSelectDominio('det-convenio','CONVENIO', p.convenio);
