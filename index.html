@@ -88,11 +88,7 @@
   .page-head p{ margin:0; color:var(--textSecondary); font-size:13px; }
 
   /* cards */
-  .cards-row{ display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:16px; margin-bottom:24px; }
-  .kpi-card{ background:var(--surfaceCard); border-radius:var(--radius); padding:18px 20px; border:1px solid var(--border); }
-  .kpi-card .label{ font-size:12px; color:var(--textSecondary); text-transform:uppercase; letter-spacing:.03em; font-weight:600;}
-  .kpi-card .value{ font-size:28px; font-weight:800; color:var(--konsiTealLight); margin-top:6px;}
-  .kpi-card.alert .value{ color:var(--erro); }
+  .cards-row{ display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:16px; margin-bottom:24px; }
 
   .panel{ background:var(--surfaceCard); border-radius:var(--radius); border:1px solid var(--border); padding:20px; margin-bottom:20px;}
   .panel h3{ margin:0 0 14px; font-size:16px; color:#fff; font-weight:600;}
@@ -120,6 +116,8 @@
   .badge-PERDIDO{ background:var(--erroBg); color:var(--erro); }
   .badge-PARCIAL{ background:var(--alertaBg); color:var(--alerta); }
   .badge-EM_ANDAMENTO{ background:#232320; color:var(--textSecondary); }
+  .badge-ATIVO{ background:var(--sucessoBg); color:var(--sucesso); }
+  .badge-ARQUIVADO{ background:#232320; color:var(--textSecondary); }
   .banner-aviso{ background:var(--alertaBg); border:1px solid var(--alerta); color:var(--alerta); padding:12px 16px; border-radius:9px; font-size:13px; margin-bottom:18px; display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; }
 
   .filters{ display:flex; gap:10px; flex-wrap:wrap; margin-bottom:16px; }
@@ -173,9 +171,10 @@
   .input-icon-wrap input{ padding-left:38px; }
 
   /* ---------- KPI CARDS v2 ---------- */
-  .kpi-card{ background:var(--surfaceCard); border-radius:12px; padding:16px 18px; border:1px solid var(--border); display:flex; align-items:flex-start; justify-content:space-between; gap:10px; transition:border-color .15s; }
+  .kpi-card{ background:var(--surfaceCard); border-radius:12px; padding:16px 18px; border:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; gap:10px; transition:border-color .15s; overflow:hidden; }
+  .kpi-card > div:first-child{ min-width:0; }
   .kpi-card:hover{ border-color:var(--borderStrong); }
-  .kpi-card .label{ font-size:11px; color:var(--textSecondary); text-transform:uppercase; letter-spacing:.03em; font-weight:600;}
+  .kpi-card .label{ font-size:11px; color:var(--textSecondary); text-transform:uppercase; letter-spacing:.03em; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
   .kpi-card .value{ font-size:26px; font-weight:800; color:var(--konsiTealLight); margin-top:6px;}
   .kpi-card.alert .value{ color:var(--erro); }
   .kpi-card.alert .icon-box{ background:#FF6B6B22; }
@@ -360,6 +359,11 @@
         <select id="f-banco"><option value="">Todos os bancos</option></select>
         <select id="f-motivo"><option value="">Todos os motivos</option></select>
         <select id="f-risco"><option value="">Todos os riscos</option></select>
+        <select id="f-status-processo">
+          <option value="">Ativos e arquivados</option>
+          <option value="ATIVO" selected>Só ativos</option>
+          <option value="ARQUIVADO">Só arquivados</option>
+        </select>
         <input type="text" id="f-busca" placeholder="Buscar por nome, CPF ou nº processo">
         <span style="font-size:12px; color:var(--textSecondary); align-self:center;">Ajuizado entre</span>
         <input type="date" id="f-ajuizamento-de" title="Ajuizado a partir de">
@@ -369,7 +373,7 @@
       </div>
       <div class="panel">
         <div class="table-wrap"><table id="tbl-processos">
-          <thead><tr><th>Processo</th><th>Cliente</th><th>Banco</th><th>Convênio</th><th>Operação</th><th>Motivo</th><th>Ajuizamento</th><th>Situação</th><th>Risco</th><th>Valor risco</th></tr></thead>
+          <thead><tr><th>Processo</th><th>Cliente</th><th>Banco</th><th>Convênio</th><th>Operação</th><th>Motivo</th><th>Ajuizamento</th><th>Situação</th><th>Risco</th><th>Status</th><th>Valor risco</th></tr></thead>
           <tbody></tbody>
         </table></div>
       </div>
@@ -527,6 +531,14 @@
                 <option value="GANHO">Ganho</option>
                 <option value="PERDIDO">Perdido</option>
                 <option value="PARCIAL">Parcial</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-row single">
+            <div><label>Status do processo</label>
+              <select id="det-status-processo">
+                <option value="ATIVO">Ativo</option>
+                <option value="ARQUIVADO">Arquivado/Extinto</option>
               </select>
             </div>
           </div>
@@ -748,7 +760,7 @@ function montarFiltros(){
   const bancos = [...new Set(processosCache.map(p=>p.banco).filter(Boolean))].sort();
   const selBanco = document.getElementById('f-banco');
   selBanco.innerHTML = '<option value="">Todos os bancos</option>' + bancos.map(b=>`<option>${b}</option>`).join('');
-  ['f-banco','f-motivo','f-risco','f-busca','f-ajuizamento-de','f-ajuizamento-ate'].forEach(id=>{
+  ['f-banco','f-motivo','f-risco','f-busca','f-ajuizamento-de','f-ajuizamento-ate','f-status-processo'].forEach(id=>{
     document.getElementById(id).oninput = renderTabelaProcessos;
   });
 }
@@ -766,11 +778,13 @@ function renderTabelaProcessos(){
   const busca = document.getElementById('f-busca').value.toLowerCase();
   const ajuizDe = document.getElementById('f-ajuizamento-de').value;
   const ajuizAte = document.getElementById('f-ajuizamento-ate').value;
+  const statusProc = document.getElementById('f-status-processo').value;
   const tbody = document.querySelector('#tbl-processos tbody');
   const filtrado = processosCache.filter(p=>
     (!banco || p.banco===banco) &&
     (!motivo || p.motivo===motivo) &&
     (!risco || p.classificacao_risco===risco) &&
+    (!statusProc || (p.status_processo||'ATIVO')===statusProc) &&
     (!busca || (p.nome_cliente||'').toLowerCase().includes(busca) || (p.cpf||'').includes(busca) || (p.numero_processo||'').includes(busca)) &&
     (!ajuizDe || (p.data_ajuizamento && p.data_ajuizamento >= ajuizDe)) &&
     (!ajuizAte || (p.data_ajuizamento && p.data_ajuizamento <= ajuizAte))
@@ -791,8 +805,9 @@ function renderTabelaProcessos(){
       <td>${fmtDate(p.data_ajuizamento)}</td>
       <td>${p.situacao_atual||'—'}</td>
       <td><span class="badge badge-${p.classificacao_risco}">${p.classificacao_risco}</span></td>
+      <td><span class="badge badge-${p.status_processo||'ATIVO'}">${(p.status_processo||'ATIVO')==='ATIVO'?'Ativo':'Arquivado'}</span></td>
       <td>${fmtMoney(p.valor_risco)}</td>
-    </tr>`).join('') : `<tr><td colspan="10">${emptyState('Nenhum processo encontrado', 'Ajuste os filtros ou cadastre um novo processo.')}</td></tr>`;
+    </tr>`).join('') : `<tr><td colspan="11">${emptyState('Nenhum processo encontrado', 'Ajuste os filtros ou cadastre um novo processo.')}</td></tr>`;
 }
 
 const ICON_FOLDER = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h5l2 2h9a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z"/></svg>';
@@ -832,11 +847,13 @@ function renderPieChart(container, items, formatValue, totalLabel){
 }
 
 async function carregarDashboard(){
-  const total = processosCache.length;
-  const valorTotal = processosCache.reduce((s,p)=>s+(Number(p.valor_risco)||0),0);
-  const criticos = processosCache.filter(p=>['ALTO','CRITICO'].includes(p.classificacao_risco)).length;
+  const ativos = processosCache.filter(p=>(p.status_processo||'ATIVO')==='ATIVO');
+  const total = ativos.length;
+  const valorTotal = ativos.reduce((s,p)=>s+(Number(p.valor_risco)||0),0);
+  const criticos = ativos.filter(p=>['ALTO','CRITICO'].includes(p.classificacao_risco)).length;
   const { count: tarefasAtrasadas } = await sb.from('tarefas_acompanhamento').select('id',{count:'exact', head:true}).eq('status','ATRASADA');
 
+  // % de êxito considera todos os processos concluídos, mesmo os já arquivados
   const ganhos = processosCache.filter(p=>p.resultado==='GANHO').length;
   const perdidos = processosCache.filter(p=>p.resultado==='PERDIDO').length;
   const parciais = processosCache.filter(p=>p.resultado==='PARCIAL').length;
@@ -845,21 +862,21 @@ async function carregarDashboard(){
 
   document.getElementById('kpi-cards').innerHTML = `
     <div class="kpi-card"><div><div class="label">Processos ativos</div><div class="value">${total}</div></div><div class="icon-box">${ICON_FOLDER}</div></div>
-    <div class="kpi-card"><div><div class="label">Valor total em risco</div><div class="value">${fmtMoney(valorTotal)}</div></div><div class="icon-box">${ICON_COIN}</div></div>
-    <div class="kpi-card ${criticos>0?'alert':''}"><div><div class="label">Risco alto/crítico</div><div class="value">${criticos}</div></div><div class="icon-box">${ICON_ALERT}</div></div>
+    <div class="kpi-card"><div><div class="label">Valor em risco (ativos)</div><div class="value">${fmtMoney(valorTotal)}</div></div><div class="icon-box">${ICON_COIN}</div></div>
+    <div class="kpi-card ${criticos>0?'alert':''}"><div><div class="label">Risco alto/crítico (ativos)</div><div class="value">${criticos}</div></div><div class="icon-box">${ICON_ALERT}</div></div>
     <div class="kpi-card ${tarefasAtrasadas>0?'alert':''}"><div><div class="label">Acompanhamentos atrasados</div><div class="value">${tarefasAtrasadas||0}</div></div><div class="icon-box">${ICON_CLOCK}</div></div>
     <div class="kpi-card"><div><div class="label">% de êxito (${concluidos} concluídos)</div><div class="value">${exitoPct===null?'—':exitoPct+'%'}</div></div><div class="icon-box">${ICON_CLOCK}</div></div>
   `;
 
   const porBanco = {};
-  processosCache.forEach(p=>{ porBanco[p.banco]=porBanco[p.banco]||{n:0,v:0}; porBanco[p.banco].n++; porBanco[p.banco].v+=Number(p.valor_risco)||0; });
+  ativos.forEach(p=>{ porBanco[p.banco]=porBanco[p.banco]||{n:0,v:0}; porBanco[p.banco].n++; porBanco[p.banco].v+=Number(p.valor_risco)||0; });
   renderPieChart(document.getElementById('chart-por-banco'),
     Object.entries(porBanco).sort((a,b)=>b[1].n-a[1].n).map(([b,v])=>({label:b, n:v.n, v:v.v})),
     i=>`${i.n} · ${fmtMoney(i.v)}`, 'processos');
 
   const RISK_COLOR = { CRITICO:'#FF6B6B', ALTO:'#F0935B', MEDIO:'#F3B94E', BAIXO:'#3FDC9E' };
   const porRisco = {};
-  processosCache.forEach(p=>{ porRisco[p.classificacao_risco]=porRisco[p.classificacao_risco]||{n:0,v:0}; porRisco[p.classificacao_risco].n++; porRisco[p.classificacao_risco].v+=Number(p.valor_risco)||0; });
+  ativos.forEach(p=>{ porRisco[p.classificacao_risco]=porRisco[p.classificacao_risco]||{n:0,v:0}; porRisco[p.classificacao_risco].n++; porRisco[p.classificacao_risco].v+=Number(p.valor_risco)||0; });
   renderPieChart(document.getElementById('chart-por-risco'),
     ['CRITICO','ALTO','MEDIO','BAIXO'].filter(r=>porRisco[r]).map(r=>({label:r, n:porRisco[r].n, v:porRisco[r].v, color:RISK_COLOR[r]})),
     i=>`${i.n} · ${fmtMoney(i.v)}`, 'processos');
@@ -1055,6 +1072,7 @@ function renderDetView(p){
       ${fc('Valor em risco', fmtMoney(p.valor_risco))}
       ${fc('Classificação de risco', `<span class="badge badge-${p.classificacao_risco}">${p.classificacao_risco}</span>`)}
       ${fc('Resultado', `<span class="badge badge-${p.resultado}">${RESULTADO_LABEL[p.resultado]||p.resultado}</span>`)}
+      ${fc('Status do processo', `<span class="badge badge-${p.status_processo||'ATIVO'}">${(p.status_processo||'ATIVO')==='ATIVO'?'Ativo':'Arquivado/Extinto'}</span>`)}
       ${fc('Situação atual', p.situacao_atual||'—')}
     </div>
   `;
@@ -1095,6 +1113,7 @@ function abrirEdicaoProcesso(){
   document.getElementById('det-valor-risco').value = p.valor_risco || '';
   document.getElementById('det-situacao').value = p.situacao_atual || '';
   document.getElementById('det-resultado').value = p.resultado || 'EM_ANDAMENTO';
+  document.getElementById('det-status-processo').value = p.status_processo || 'ATIVO';
   document.getElementById('det-edit-form').style.display = 'block';
 }
 
@@ -1118,7 +1137,8 @@ async function salvarAtualizacaoProcesso(){
     classificacao_risco: document.getElementById('det-risco').value,
     valor_risco: document.getElementById('det-valor-risco').value || null,
     situacao_atual: document.getElementById('det-situacao').value.trim(),
-    resultado: document.getElementById('det-resultado').value
+    resultado: document.getElementById('det-resultado').value,
+    status_processo: document.getElementById('det-status-processo').value
   };
   const { error } = await sb.from('processos_judiciais').update(payload).eq('id', processoAtualId);
   if(error){ toast('Erro: '+error.message+' (só administradores podem editar um processo)'); return; }
