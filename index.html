@@ -180,6 +180,14 @@
   .kpi-card .icon-box{ position:absolute; top:14px; right:14px; width:30px; height:30px; }
   .icon-btn{ width:30px; height:30px; border-radius:8px; background:var(--surfaceCardAlt); border:1px solid var(--border); display:flex; align-items:center; justify-content:center; color:var(--textSecondary); cursor:pointer; transition:.15s; flex-shrink:0; }
   .icon-btn:hover{ background:#2A2823; color:var(--textPrimary); border-color:var(--borderStrong); }
+  .cohort-tab.active{ background:var(--konsiTeal); color:#08130F; border-color:var(--konsiTeal); }
+  .bar-row.expandable{ cursor:pointer; border-radius:6px; transition:background .15s; }
+  .bar-row.expandable:hover{ background:#1F1D19; }
+  .mini-cohort-box{ display:grid; grid-template-columns:1fr 1fr; gap:16px; background:#141310; border:1px solid var(--border); border-radius:8px; padding:12px 14px; margin:4px 0 12px; }
+  .mini-cohort-title{ font-size:10px; font-weight:700; color:var(--textSecondary); text-transform:uppercase; letter-spacing:.03em; margin-bottom:6px; }
+  @media (max-width:640px){ .mini-cohort-box{ grid-template-columns:1fr; } }
+  .full-cohort-box{ display:grid; grid-template-columns:1fr 1fr; gap:16px; margin:4px 0 16px; }
+  @media (max-width:640px){ .full-cohort-box{ grid-template-columns:1fr; } }
   .kpi-card.alert .icon-box{ background:#FF6B6B22; }
   .kpi-card.alert .icon-box svg{ color:var(--erro); }
 
@@ -339,7 +347,8 @@
     <div class="modal-overlay" id="modal-cohort">
       <div class="modal wide">
         <div class="modal-head"><h3>Tempo médio até o ajuizamento, por mês da operação</h3><button onclick="closeModal('modal-cohort')">✕</button></div>
-        <div class="table-wrap"><table id="tbl-cohort-completo"><thead><tr><th>Mês da operação</th><th>Processos</th><th>Tempo médio até o ajuizamento</th></tr></thead><tbody></tbody></table></div>
+        <p class="field-note" style="margin:0 0 12px;">Clique num mês pra ver, em gráfico, a quebra por tipo de operação e por motivo naquele mês.</p>
+        <div id="chart-cohort-completo"></div>
       </div>
     </div>
 
@@ -921,22 +930,117 @@ async function carregarDashboard(){
     const max = Math.max(...top.map(c=>c.processos));
     chartCohort.innerHTML = top.map(c=>{
       const [ano,mes] = c.mes_operacao.split('-');
-      return `<div class="bar-row">
-        <div class="bar-label">${mes}/${ano}</div>
-        <div class="bar-track"><div class="bar-fill" style="width:${Math.round(c.processos/max*100)}%;"></div></div>
-        <div class="bar-value">${c.processos} · ${c.media_dias_ate_ajuizamento}d</div>
+      return `<div>
+        <div class="bar-row expandable" onclick="toggleMiniCohort(this,'${c.mes_operacao}')">
+          <div class="bar-label">${mes}/${ano}</div>
+          <div class="bar-track"><div class="bar-fill" style="width:${Math.round(c.processos/max*100)}%;"></div></div>
+          <div class="bar-value">${c.processos} · ${c.media_dias_ate_ajuizamento}d</div>
+        </div>
+        <div class="mini-cohort-slot"></div>
       </div>`;
     }).join('');
   }
 }
 
+function diasEntre(d1, d2){
+  return Math.round((new Date(d2) - new Date(d1)) / 86400000);
+}
+
+function calcularCohortPorCampo(lista, campo){
+  const grupos = {};
+  lista.forEach(p=>{
+    const chave = p[campo] || '(sem informação)';
+    grupos[chave] = grupos[chave] || { soma:0, n:0 };
+    grupos[chave].soma += diasEntre(p.data_operacao, p.data_ajuizamento);
+    grupos[chave].n++;
+  });
+  return Object.entries(grupos)
+    .map(([chave,v])=>({ label:chave, n:v.n, media: Math.round(v.soma/v.n) }))
+    .sort((a,b)=>b.n-a.n);
+}
+
+function renderMiniBarChart(container, items, corBase){
+  if(!items.length){ container.innerHTML = ''; return; }
+  const max = Math.max(...items.map(i=>i.n));
+  container.innerHTML = items.map(i=>`
+    <div class="bar-row" style="grid-template-columns:130px 1fr 80px;">
+      <div class="bar-label">${i.label}</div>
+      <div class="bar-track"><div class="bar-fill" style="width:${Math.round(i.n/max*100)}%; background:${corBase};"></div></div>
+      <div class="bar-value">${i.n} · ${i.media}d</div>
+    </div>`).join('');
+}
+
 function abrirDetalheCohort(){
-  const tbody = document.querySelector('#tbl-cohort-completo tbody');
-  tbody.innerHTML = cohortCache.length ? cohortCache.map(c=>{
+  const container = document.getElementById('chart-cohort-completo');
+  if(!cohortCache.length){
+    container.innerHTML = emptyState('Sem dados suficientes ainda','');
+    openModal('modal-cohort');
+    return;
+  }
+  const max = Math.max(...cohortCache.map(c=>c.processos));
+  container.innerHTML = cohortCache.map(c=>{
     const [ano,mes] = c.mes_operacao.split('-');
-    return `<tr><td>${mes}/${ano}</td><td>${c.processos}</td><td>${c.media_dias_ate_ajuizamento} dias</td></tr>`;
-  }).join('') : `<tr><td colspan="3">${emptyState('Sem dados suficientes ainda','')}</td></tr>`;
+    return `<div>
+      <div class="bar-row expandable" onclick="toggleGraficoCompletoCohort(this,'${c.mes_operacao}')">
+        <div class="bar-label">${mes}/${ano}</div>
+        <div class="bar-track"><div class="bar-fill" style="width:${Math.round(c.processos/max*100)}%;"></div></div>
+        <div class="bar-value">${c.processos} · ${c.media_dias_ate_ajuizamento}d</div>
+      </div>
+      <div class="full-cohort-slot"></div>
+    </div>`;
+  }).join('');
   openModal('modal-cohort');
+}
+
+function toggleMiniCohort(rowEl, mesOperacao){
+  const slot = rowEl.parentElement.querySelector('.mini-cohort-slot');
+  if(slot.innerHTML){ slot.innerHTML = ''; return; }
+  document.querySelectorAll('.mini-cohort-slot').forEach(s=>s.innerHTML='');
+
+  const doMes = processosCache.filter(p=>p.data_operacao && p.data_ajuizamento && p.data_operacao.slice(0,7)===mesOperacao);
+  const porOperacao = calcularCohortPorCampo(doMes, 'tipo_operacao');
+  const porMotivo = calcularCohortPorCampo(doMes, 'motivo');
+
+  slot.innerHTML = `
+    <div class="mini-cohort-box">
+      <div class="mini-cohort-col">
+        <div class="mini-cohort-title">Por tipo de operação</div>
+        <div id="mini-op-${mesOperacao}"></div>
+      </div>
+      <div class="mini-cohort-col">
+        <div class="mini-cohort-title">Por motivo</div>
+        <div id="mini-mo-${mesOperacao}"></div>
+      </div>
+    </div>`;
+  renderMiniBarChart(document.getElementById(`mini-op-${mesOperacao}`), porOperacao, 'var(--konsiTeal)');
+  renderMiniBarChart(document.getElementById(`mini-mo-${mesOperacao}`), porMotivo, '#7F9CF5');
+}
+
+// No detalhamento completo, o clique abre gráficos de pizza cheios (mesmo estilo
+// do resto do dashboard), com TODAS as variações de motivo e tipo de operação
+// daquele mês específico — não uma versão resumida.
+function toggleGraficoCompletoCohort(rowEl, mesOperacao){
+  const slot = rowEl.parentElement.querySelector('.full-cohort-slot');
+  if(slot.innerHTML){ slot.innerHTML = ''; return; }
+  document.querySelectorAll('.full-cohort-slot').forEach(s=>s.innerHTML='');
+
+  const doMes = processosCache.filter(p=>p.data_operacao && p.data_ajuizamento && p.data_operacao.slice(0,7)===mesOperacao);
+  const porMotivo = calcularCohortPorCampo(doMes, 'motivo').map(x=>({label:x.label, n:x.n}));
+  const porOperacao = calcularCohortPorCampo(doMes, 'tipo_operacao').map(x=>({label:x.label, n:x.n}));
+
+  slot.innerHTML = `
+    <div class="full-cohort-box">
+      <div class="panel" style="margin:0;">
+        <h3>Motivos neste mês</h3>
+        <div id="full-mo-${mesOperacao}"></div>
+      </div>
+      <div class="panel" style="margin:0;">
+        <h3>Tipos de operação neste mês</h3>
+        <div id="full-op-${mesOperacao}"></div>
+      </div>
+    </div>`;
+  renderPieChart(document.getElementById(`full-mo-${mesOperacao}`), porMotivo, null, 'processos');
+  renderPieChart(document.getElementById(`full-op-${mesOperacao}`), porOperacao, null, 'processos');
 }
 
 function abrirDetalheBanco(){
