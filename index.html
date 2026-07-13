@@ -178,6 +178,8 @@
   .kpi-card .value{ font-size:22px; font-weight:800; color:var(--konsiTealLight); margin-top:6px; white-space:nowrap; }
   .kpi-card.alert .value{ color:var(--erro); }
   .kpi-card .icon-box{ position:absolute; top:14px; right:14px; width:30px; height:30px; }
+  .icon-btn{ width:30px; height:30px; border-radius:8px; background:var(--surfaceCardAlt); border:1px solid var(--border); display:flex; align-items:center; justify-content:center; color:var(--textSecondary); cursor:pointer; transition:.15s; flex-shrink:0; }
+  .icon-btn:hover{ background:#2A2823; color:var(--textPrimary); border-color:var(--borderStrong); }
   .kpi-card.alert .icon-box{ background:#FF6B6B22; }
   .kpi-card.alert .icon-box svg{ color:var(--erro); }
 
@@ -296,7 +298,7 @@
         <div class="panel">
           <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; margin-bottom:0;">
             <h3 style="margin-bottom:0;">Processos por banco</h3>
-            <button class="btn-secondary" onclick="abrirDetalheBanco()">Ver detalhamento completo</button>
+            <button class="icon-btn" title="Ver detalhamento completo" onclick="abrirDetalheBanco()"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg></button>
           </div>
           <div id="chart-por-banco"></div>
         </div>
@@ -327,7 +329,7 @@
             <h3 style="margin-bottom:2px;">Tempo médio entre celebração da operação e ajuizamento</h3>
             <p style="font-size:12px; color:var(--textSecondary); margin:0 0 12px;">Meses com o maior volume de operações que viraram processo judicial.</p>
           </div>
-          <button class="btn-secondary" onclick="abrirDetalheCohort()">Ver detalhamento completo</button>
+          <button class="icon-btn" title="Ver detalhamento completo" onclick="abrirDetalheCohort()"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg></button>
         </div>
         <div id="chart-cohort"></div>
       </div>
