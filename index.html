@@ -451,7 +451,7 @@
     <div class="modal-head"><h3>Cadastrar novo processo</h3><button onclick="closeModal('modal-novo-processo')">✕</button></div>
     <p class="field-note">Não encontrou o banco, convênio, tipo de operação ou motivo na lista? Escolha "+ Adicionar novo..." no campo — o valor fica salvo para as próximas vezes.</p>
     <div class="form-row">
-      <div><label>Número do processo</label><input id="np-numero" placeholder="0000000-00.0000.0.00.0000"></div>
+      <div><label>Número do processo</label><input id="np-numero" placeholder="0000000-00.0000.0.00.0000" onblur="identificarTribunalAutomatico('np-numero','np-tribunal')"></div>
       <div><label>Tribunal</label><input id="np-tribunal" placeholder="TJBA, TJSP, TRF1..."></div>
     </div>
     <div class="form-row">
@@ -1188,6 +1188,26 @@ async function salvarMetricaMensal(){
 }
 
 // ---------------- NOVO PROCESSO ----------------
+// Identifica o tribunal automaticamente a partir do número CNJ, chamando a
+// função fn_identificar_tribunal criada no Supabase. Só preenche o campo se
+// ele estiver vazio, pra não sobrescrever uma edição manual da pessoa.
+async function identificarTribunalAutomatico(idCampoNumero, idCampoTribunal){
+  const numero = document.getElementById(idCampoNumero).value.trim();
+  const campoTribunal = document.getElementById(idCampoTribunal);
+  if(!numero || campoTribunal.value.trim()) return;
+
+  const { data, error } = await sb.rpc('fn_identificar_tribunal', { p_numero: numero });
+  if(error){
+    console.error('Erro ao identificar tribunal:', error);
+    return;
+  }
+  if(data){
+    campoTribunal.value = data;
+  } else {
+    toast('Não foi possível identificar o tribunal a partir desse número. Confira o formato ou preencha manualmente.');
+  }
+}
+
 function openNovoProcesso(){
   preencherSelectDominio('np-banco','BANCO');
   preencherSelectDominio('np-convenio','CONVENIO');
