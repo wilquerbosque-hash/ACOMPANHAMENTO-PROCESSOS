@@ -294,7 +294,10 @@
       <div class="cards-row" id="kpi-cards"></div>
       <div class="grid-2">
         <div class="panel">
-          <h3>Processos por banco</h3>
+          <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; margin-bottom:0;">
+            <h3 style="margin-bottom:0;">Processos por banco</h3>
+            <button class="btn-secondary" onclick="abrirDetalheBanco()">Ver detalhamento completo</button>
+          </div>
           <div id="chart-por-banco"></div>
         </div>
         <div class="panel">
@@ -305,6 +308,18 @@
       <div class="panel">
         <h3>Motivos das ações</h3>
         <div id="chart-por-motivo"></div>
+      </div>
+
+      <!-- ---------- MODAL: DETALHE POR BANCO ---------- -->
+      <div class="modal-overlay" id="modal-banco">
+        <div class="modal wide">
+          <div class="modal-head"><h3>Processos por banco — detalhamento completo</h3><button onclick="closeModal('modal-banco')">✕</button></div>
+          <div id="chart-banco-completo" style="margin-bottom:18px;"></div>
+          <div class="table-wrap"><table id="tbl-banco-completo">
+            <thead><tr><th>Banco</th><th>Processos</th><th>Valor em risco</th><th>%</th></tr></thead>
+            <tbody></tbody>
+          </table></div>
+        </div>
       </div>
       <div class="panel">
         <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:10px;">
@@ -606,6 +621,7 @@ let processosCache = [];
 let processoAtualId = null;
 let opcoesCache = { BANCO:[], CONVENIO:[], OPERACAO:[], MOTIVO:[] };
 let cohortCache = [];
+let bancoCache = [];
 const RESULTADO_LABEL = { EM_ANDAMENTO:'Em andamento', GANHO:'Ganho', PERDIDO:'Perdido', PARCIAL:'Parcial' };
 
 function toast(msg){
@@ -870,9 +886,9 @@ async function carregarDashboard(){
   `;
 
   const porBanco = {};
-  ativos.forEach(p=>{ porBanco[p.banco]=porBanco[p.banco]||{n:0,v:0}; porBanco[p.banco].n++; porBanco[p.banco].v+=Number(p.valor_risco)||0; });
-  renderPieChart(document.getElementById('chart-por-banco'),
-    Object.entries(porBanco).sort((a,b)=>b[1].n-a[1].n).map(([b,v])=>({label:b, n:v.n, v:v.v})),
+  ativos.forEach(p=>{ const b=p.banco||'(sem banco)'; porBanco[b]=porBanco[b]||{n:0,v:0}; porBanco[b].n++; porBanco[b].v+=Number(p.valor_risco)||0; });
+  bancoCache = Object.entries(porBanco).sort((a,b)=>b[1].n-a[1].n).map(([b,v])=>({label:b, n:v.n, v:v.v}));
+  renderPieChart(document.getElementById('chart-por-banco'), bancoCache.slice(0,6),
     i=>`${i.n} · ${fmtMoney(i.v)}`, 'processos');
 
   const RISK_COLOR = { CRITICO:'#FF6B6B', ALTO:'#F0935B', MEDIO:'#F3B94E', BAIXO:'#3FDC9E' };
@@ -917,6 +933,28 @@ function abrirDetalheCohort(){
     return `<tr><td>${mes}/${ano}</td><td>${c.processos}</td><td>${c.media_dias_ate_ajuizamento} dias</td></tr>`;
   }).join('') : `<tr><td colspan="3">${emptyState('Sem dados suficientes ainda','')}</td></tr>`;
   openModal('modal-cohort');
+}
+
+function abrirDetalheBanco(){
+  const total = bancoCache.reduce((s,b)=>s+b.n,0);
+  const container = document.getElementById('chart-banco-completo');
+  if(!bancoCache.length){
+    container.innerHTML = emptyState('Sem dados ainda','');
+  }else{
+    const max = Math.max(...bancoCache.map(b=>b.n));
+    container.innerHTML = bancoCache.map(b=>`
+      <div class="bar-row">
+        <div class="bar-label">${b.label}</div>
+        <div class="bar-track"><div class="bar-fill" style="width:${Math.round(b.n/max*100)}%;"></div></div>
+        <div class="bar-value">${b.n} · ${fmtMoney(b.v)}</div>
+      </div>`).join('');
+  }
+  const tbody = document.querySelector('#tbl-banco-completo tbody');
+  tbody.innerHTML = bancoCache.length ? bancoCache.map(b=>{
+    const pct = total ? Math.round(b.n/total*100) : 0;
+    return `<tr><td>${b.label}</td><td>${b.n}</td><td>${fmtMoney(b.v)}</td><td>${pct}%</td></tr>`;
+  }).join('') : `<tr><td colspan="4">${emptyState('Sem dados ainda','')}</td></tr>`;
+  openModal('modal-banco');
 }
 
 async function carregarTarefas(){
