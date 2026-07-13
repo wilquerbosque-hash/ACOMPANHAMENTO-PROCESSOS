@@ -307,11 +307,24 @@
         <div id="chart-por-motivo"></div>
       </div>
       <div class="panel">
-        <h3>Tempo médio entre celebração da operação e ajuizamento</h3>
-        <p style="font-size:12px; color:var(--textSecondary); margin:-6px 0 12px;">Quantos dias, em média, uma operação celebrada em cada mês leva para virar um processo judicial.</p>
-        <div class="table-wrap"><table id="tbl-cohort"><thead><tr><th>Mês da operação</th><th>Processos</th><th>Tempo médio até o ajuizamento</th></tr></thead><tbody></tbody></table></div>
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:10px;">
+          <div>
+            <h3 style="margin-bottom:2px;">Tempo médio entre celebração da operação e ajuizamento</h3>
+            <p style="font-size:12px; color:var(--textSecondary); margin:0 0 12px;">Meses com o maior volume de operações que viraram processo judicial.</p>
+          </div>
+          <button class="btn-secondary" onclick="abrirDetalheCohort()">Ver detalhamento completo</button>
+        </div>
+        <div id="chart-cohort"></div>
       </div>
     </section>
+
+    <!-- ---------- MODAL: DETALHE DO COHORT ---------- -->
+    <div class="modal-overlay" id="modal-cohort">
+      <div class="modal wide">
+        <div class="modal-head"><h3>Tempo médio até o ajuizamento, por mês da operação</h3><button onclick="closeModal('modal-cohort')">✕</button></div>
+        <div class="table-wrap"><table id="tbl-cohort-completo"><thead><tr><th>Mês da operação</th><th>Processos</th><th>Tempo médio até o ajuizamento</th></tr></thead><tbody></tbody></table></div>
+      </div>
+    </div>
 
     <!-- ---------- MÉTRICAS MENSAIS ---------- -->
     <section id="view-metricas" class="view">
@@ -579,6 +592,7 @@ let currentUserIsAdmin = false;
 let processosCache = [];
 let processoAtualId = null;
 let opcoesCache = { BANCO:[], CONVENIO:[], OPERACAO:[], MOTIVO:[] };
+let cohortCache = [];
 const RESULTADO_LABEL = { EM_ANDAMENTO:'Em andamento', GANHO:'Ganho', PERDIDO:'Perdido', PARCIAL:'Parcial' };
 
 function toast(msg){
@@ -860,15 +874,31 @@ async function carregarDashboard(){
   document.getElementById('f-risco').innerHTML = '<option value="">Todos os riscos</option>' + ['BAIXO','MEDIO','ALTO','CRITICO'].map(r=>`<option value="${r}">${r}</option>`).join('');
 
   const { data: cohort, error: cohortErr } = await sb.from('vw_cohort_ajuizamento').select('*');
-  const tbodyCohort = document.querySelector('#tbl-cohort tbody');
-  if(cohortErr || !cohort || !cohort.length){
-    tbodyCohort.innerHTML = `<tr><td colspan="3">${emptyState('Sem dados suficientes ainda', 'Preencha data da operação e data de ajuizamento nos processos.')}</td></tr>`;
+  cohortCache = (!cohortErr && cohort) ? cohort : [];
+  const chartCohort = document.getElementById('chart-cohort');
+  if(!cohortCache.length){
+    chartCohort.innerHTML = emptyState('Sem dados suficientes ainda', 'Preencha data da operação e data de ajuizamento nos processos.');
   }else{
-    tbodyCohort.innerHTML = cohort.map(c=>{
+    const top = [...cohortCache].sort((a,b)=>b.processos-a.processos).slice(0,6);
+    const max = Math.max(...top.map(c=>c.processos));
+    chartCohort.innerHTML = top.map(c=>{
       const [ano,mes] = c.mes_operacao.split('-');
-      return `<tr><td>${mes}/${ano}</td><td>${c.processos}</td><td>${c.media_dias_ate_ajuizamento} dias</td></tr>`;
+      return `<div class="bar-row">
+        <div class="bar-label">${mes}/${ano}</div>
+        <div class="bar-track"><div class="bar-fill" style="width:${Math.round(c.processos/max*100)}%;"></div></div>
+        <div class="bar-value">${c.processos} · ${c.media_dias_ate_ajuizamento}d</div>
+      </div>`;
     }).join('');
   }
+}
+
+function abrirDetalheCohort(){
+  const tbody = document.querySelector('#tbl-cohort-completo tbody');
+  tbody.innerHTML = cohortCache.length ? cohortCache.map(c=>{
+    const [ano,mes] = c.mes_operacao.split('-');
+    return `<tr><td>${mes}/${ano}</td><td>${c.processos}</td><td>${c.media_dias_ate_ajuizamento} dias</td></tr>`;
+  }).join('') : `<tr><td colspan="3">${emptyState('Sem dados suficientes ainda','')}</td></tr>`;
+  openModal('modal-cohort');
 }
 
 async function carregarTarefas(){
