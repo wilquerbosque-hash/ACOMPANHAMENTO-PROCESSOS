@@ -348,10 +348,15 @@
         <select id="f-motivo"><option value="">Todos os motivos</option></select>
         <select id="f-risco"><option value="">Todos os riscos</option></select>
         <input type="text" id="f-busca" placeholder="Buscar por nome, CPF ou nº processo">
+        <span style="font-size:12px; color:var(--textSecondary); align-self:center;">Ajuizado entre</span>
+        <input type="date" id="f-ajuizamento-de" title="Ajuizado a partir de">
+        <span style="font-size:12px; color:var(--textSecondary); align-self:center;">e</span>
+        <input type="date" id="f-ajuizamento-ate" title="Ajuizado até">
+        <button class="btn-ghost" onclick="limparFiltroAjuizamento()">Limpar datas</button>
       </div>
       <div class="panel">
         <div class="table-wrap"><table id="tbl-processos">
-          <thead><tr><th>Processo</th><th>Cliente</th><th>Banco</th><th>Convênio</th><th>Operação</th><th>Motivo</th><th>Situação</th><th>Risco</th><th>Valor risco</th></tr></thead>
+          <thead><tr><th>Processo</th><th>Cliente</th><th>Banco</th><th>Convênio</th><th>Operação</th><th>Motivo</th><th>Ajuizamento</th><th>Situação</th><th>Risco</th><th>Valor risco</th></tr></thead>
           <tbody></tbody>
         </table></div>
       </div>
@@ -729,9 +734,15 @@ function montarFiltros(){
   const bancos = [...new Set(processosCache.map(p=>p.banco).filter(Boolean))].sort();
   const selBanco = document.getElementById('f-banco');
   selBanco.innerHTML = '<option value="">Todos os bancos</option>' + bancos.map(b=>`<option>${b}</option>`).join('');
-  ['f-banco','f-motivo','f-risco','f-busca'].forEach(id=>{
+  ['f-banco','f-motivo','f-risco','f-busca','f-ajuizamento-de','f-ajuizamento-ate'].forEach(id=>{
     document.getElementById(id).oninput = renderTabelaProcessos;
   });
+}
+
+function limparFiltroAjuizamento(){
+  document.getElementById('f-ajuizamento-de').value = '';
+  document.getElementById('f-ajuizamento-ate').value = '';
+  renderTabelaProcessos();
 }
 
 function renderTabelaProcessos(){
@@ -739,13 +750,22 @@ function renderTabelaProcessos(){
   const motivo = document.getElementById('f-motivo').value;
   const risco = document.getElementById('f-risco').value;
   const busca = document.getElementById('f-busca').value.toLowerCase();
+  const ajuizDe = document.getElementById('f-ajuizamento-de').value;
+  const ajuizAte = document.getElementById('f-ajuizamento-ate').value;
   const tbody = document.querySelector('#tbl-processos tbody');
   const filtrado = processosCache.filter(p=>
     (!banco || p.banco===banco) &&
     (!motivo || p.motivo===motivo) &&
     (!risco || p.classificacao_risco===risco) &&
-    (!busca || (p.nome_cliente||'').toLowerCase().includes(busca) || (p.cpf||'').includes(busca) || (p.numero_processo||'').includes(busca))
-  );
+    (!busca || (p.nome_cliente||'').toLowerCase().includes(busca) || (p.cpf||'').includes(busca) || (p.numero_processo||'').includes(busca)) &&
+    (!ajuizDe || (p.data_ajuizamento && p.data_ajuizamento >= ajuizDe)) &&
+    (!ajuizAte || (p.data_ajuizamento && p.data_ajuizamento <= ajuizAte))
+  ).sort((a,b)=>{
+    if(!a.data_ajuizamento && !b.data_ajuizamento) return 0;
+    if(!a.data_ajuizamento) return 1;  // sem data vai pro fim
+    if(!b.data_ajuizamento) return -1;
+    return b.data_ajuizamento.localeCompare(a.data_ajuizamento); // mais recente primeiro
+  });
   tbody.innerHTML = filtrado.length ? filtrado.map(p=>`
     <tr class="clickable" onclick="abrirDetalhe('${p.id}')">
       <td>${p.numero_processo}</td>
@@ -754,10 +774,11 @@ function renderTabelaProcessos(){
       <td>${p.convenio||'—'}</td>
       <td>${p.tipo_operacao||'—'}</td>
       <td>${p.motivo}</td>
+      <td>${fmtDate(p.data_ajuizamento)}</td>
       <td>${p.situacao_atual||'—'}</td>
       <td><span class="badge badge-${p.classificacao_risco}">${p.classificacao_risco}</span></td>
       <td>${fmtMoney(p.valor_risco)}</td>
-    </tr>`).join('') : `<tr><td colspan="9">${emptyState('Nenhum processo encontrado', 'Ajuste os filtros ou cadastre um novo processo.')}</td></tr>`;
+    </tr>`).join('') : `<tr><td colspan="10">${emptyState('Nenhum processo encontrado', 'Ajuste os filtros ou cadastre um novo processo.')}</td></tr>`;
 }
 
 const ICON_FOLDER = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h5l2 2h9a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z"/></svg>';
