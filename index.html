@@ -931,7 +931,7 @@ async function carregarDashboard(){
     chartCohort.innerHTML = top.map(c=>{
       const [ano,mes] = c.mes_operacao.split('-');
       return `<div>
-        <div class="bar-row expandable" onclick="toggleMiniCohort(this,'${c.mes_operacao}')">
+        <div class="bar-row expandable" onclick="toggleMiniCohort(this,'${c.mes_operacao.slice(0,7)}')">
           <div class="bar-label">${mes}/${ano}</div>
           <div class="bar-track"><div class="bar-fill" style="width:${Math.round(c.processos/max*100)}%;"></div></div>
           <div class="bar-value">${c.processos} · ${c.media_dias_ate_ajuizamento}d</div>
@@ -981,7 +981,7 @@ function abrirDetalheCohort(){
   container.innerHTML = cohortCache.map(c=>{
     const [ano,mes] = c.mes_operacao.split('-');
     return `<div>
-      <div class="bar-row expandable" onclick="toggleGraficoCompletoCohort(this,'${c.mes_operacao}')">
+      <div class="bar-row expandable" onclick="toggleGraficoCompletoCohort(this,'${c.mes_operacao.slice(0,7)}')">
         <div class="bar-label">${mes}/${ano}</div>
         <div class="bar-track"><div class="bar-fill" style="width:${Math.round(c.processos/max*100)}%;"></div></div>
         <div class="bar-value">${c.processos} · ${c.media_dias_ate_ajuizamento}d</div>
