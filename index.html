@@ -625,6 +625,7 @@ let opcoesCache = { BANCO:[], CONVENIO:[], OPERACAO:[], MOTIVO:[] };
 let cohortCache = [];
 let bancoCache = [];
 let metricasCache = [];
+let metricaEditandoCompetencia = null;
 const RESULTADO_LABEL = { EM_ANDAMENTO:'Em andamento', GANHO:'Ganho', PERDIDO:'Perdido', PARCIAL:'Parcial' };
 
 function toast(msg){
@@ -1036,6 +1037,7 @@ function atualizarPreviewJudicializadas(){
 }
 
 function abrirNovoMes(competenciaPreenchida){
+  metricaEditandoCompetencia = null;
   document.getElementById('form-novo-mes').style.display = 'block';
   document.getElementById('nm-competencia').value = competenciaPreenchida || new Date().toISOString().slice(0,7);
   document.getElementById('nm-competencia').disabled = false;
@@ -1045,13 +1047,15 @@ function abrirNovoMes(competenciaPreenchida){
 function fecharNovoMes(){
   document.getElementById('form-novo-mes').style.display = 'none';
   document.getElementById('nm-competencia').disabled = false;
+  metricaEditandoCompetencia = null;
 }
 function editarMetrica(mesStr){
   const m = metricasCache.find(x=>x.competencia.slice(0,7)===mesStr);
   if(!m) return;
+  metricaEditandoCompetencia = mesStr; // guardado à parte — não depende de ler o campo desabilitado
   document.getElementById('form-novo-mes').style.display = 'block';
   document.getElementById('nm-competencia').value = mesStr;
-  document.getElementById('nm-competencia').disabled = true; // não deixa trocar o mês numa edição, pra não criar linha duplicada
+  document.getElementById('nm-competencia').disabled = true; // só visual, pra não confundir — o valor real vem de metricaEditandoCompetencia
   document.getElementById('nm-total-operacoes').value = m.total_operacoes;
   atualizarPreviewJudicializadas();
   document.getElementById('form-novo-mes').scrollIntoView({behavior:'smooth', block:'center'});
@@ -1064,7 +1068,7 @@ async function excluirMetrica(competencia){
   await carregarMetricas();
 }
 async function salvarMetricaMensal(){
-  const competenciaMes = document.getElementById('nm-competencia').value;
+  const competenciaMes = metricaEditandoCompetencia || document.getElementById('nm-competencia').value;
   const totalOperacoes = document.getElementById('nm-total-operacoes').value;
   if(!competenciaMes || totalOperacoes===''){ toast('Preencha o mês e o total de operações.'); return; }
   const competencia = competenciaMes + '-01';
