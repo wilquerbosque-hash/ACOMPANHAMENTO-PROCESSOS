@@ -171,12 +171,13 @@
   .input-icon-wrap input{ padding-left:38px; }
 
   /* ---------- KPI CARDS v2 ---------- */
-  .kpi-card{ background:var(--surfaceCard); border-radius:12px; padding:16px 18px; border:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; gap:10px; transition:border-color .15s; overflow:hidden; }
-  .kpi-card > div:first-child{ min-width:0; }
+  .kpi-card{ background:var(--surfaceCard); border-radius:12px; padding:16px 18px; border:1px solid var(--border); position:relative; transition:border-color .15s; overflow:hidden; }
+  .kpi-card > div:first-child{ padding-right:36px; }
   .kpi-card:hover{ border-color:var(--borderStrong); }
-  .kpi-card .label{ font-size:11px; color:var(--textSecondary); text-transform:uppercase; letter-spacing:.03em; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
-  .kpi-card .value{ font-size:26px; font-weight:800; color:var(--konsiTealLight); margin-top:6px;}
+  .kpi-card .label{ font-size:11px; color:var(--textSecondary); text-transform:uppercase; letter-spacing:.03em; font-weight:600; line-height:1.3;}
+  .kpi-card .value{ font-size:22px; font-weight:800; color:var(--konsiTealLight); margin-top:6px; white-space:nowrap; }
   .kpi-card.alert .value{ color:var(--erro); }
+  .kpi-card .icon-box{ position:absolute; top:14px; right:14px; width:30px; height:30px; }
   .kpi-card.alert .icon-box{ background:#FF6B6B22; }
   .kpi-card.alert .icon-box svg{ color:var(--erro); }
 
@@ -861,11 +862,11 @@ async function carregarDashboard(){
   const exitoPct = concluidos ? Math.round(ganhos/concluidos*100) : null;
 
   document.getElementById('kpi-cards').innerHTML = `
-    <div class="kpi-card"><div><div class="label">Processos ativos</div><div class="value">${total}</div></div><div class="icon-box">${ICON_FOLDER}</div></div>
-    <div class="kpi-card"><div><div class="label">Valor em risco (ativos)</div><div class="value">${fmtMoney(valorTotal)}</div></div><div class="icon-box">${ICON_COIN}</div></div>
-    <div class="kpi-card ${criticos>0?'alert':''}"><div><div class="label">Risco alto/crítico (ativos)</div><div class="value">${criticos}</div></div><div class="icon-box">${ICON_ALERT}</div></div>
+    <div class="kpi-card" title="Conta apenas processos com status Ativo"><div><div class="label">Processos ativos</div><div class="value">${total}</div></div><div class="icon-box">${ICON_FOLDER}</div></div>
+    <div class="kpi-card" title="Soma o valor em risco apenas dos processos com status Ativo"><div><div class="label">Valor em risco</div><div class="value">${fmtMoney(valorTotal)}</div></div><div class="icon-box">${ICON_COIN}</div></div>
+    <div class="kpi-card ${criticos>0?'alert':''}" title="Processos ativos com risco Alto ou Crítico"><div><div class="label">Risco alto/crítico</div><div class="value">${criticos}</div></div><div class="icon-box">${ICON_ALERT}</div></div>
     <div class="kpi-card ${tarefasAtrasadas>0?'alert':''}"><div><div class="label">Acompanhamentos atrasados</div><div class="value">${tarefasAtrasadas||0}</div></div><div class="icon-box">${ICON_CLOCK}</div></div>
-    <div class="kpi-card"><div><div class="label">% de êxito (${concluidos} concluídos)</div><div class="value">${exitoPct===null?'—':exitoPct+'%'}</div></div><div class="icon-box">${ICON_CLOCK}</div></div>
+    <div class="kpi-card" title="${concluidos} processos concluídos (ganho, perdido ou parcial), inclusive arquivados"><div><div class="label">% de êxito</div><div class="value">${exitoPct===null?'—':exitoPct+'%'}</div></div><div class="icon-box">${ICON_CLOCK}</div></div>
   `;
 
   const porBanco = {};
