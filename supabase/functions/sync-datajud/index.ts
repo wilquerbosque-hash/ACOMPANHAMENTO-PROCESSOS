@@ -57,11 +57,13 @@ const PRAZO_DIAS_TAREFA_INSPECAO = 3;
 
 // Movimentações com data ANTERIOR a esta data são gravadas normalmente no
 // histórico (pra você poder ver todo o histórico do processo), mas NÃO geram
-// tarefa de inspeção — isso evita que a primeira sincronização completa (que
-// traz anos de histórico de uma vez) crie uma enxurrada de tarefas de uma vez
-// só. Só movimentações a partir desta data passam a gerar tarefa. Ajuste ou
-// remova (deixe null) conforme a necessidade.
-const DATA_CORTE_TAREFA_INSPECAO = "2026-07-01";
+// tarefa de inspeção — isso evita que a sincronização (que traz anos de
+// histórico de uma vez) crie uma enxurrada de tarefas de uma vez só.
+// Só movimentações a partir desta data passam a gerar tarefa.
+// Ajustado para "hoje" (05/08/2026) — troque essa data se quiser mudar o
+// corte de novo no futuro, ou deixe null pra criar tarefa pra qualquer
+// movimentação nova, sem corte de data nenhum.
+const DATA_CORTE_TAREFA_INSPECAO = "2026-08-05";
 
 // Converte o valor salvo no campo "tribunal" (ex: TJBA, TRF1, TRT5) no alias
 // usado pela URL da API do DataJud (ex: tjba, trf1, trt5).
