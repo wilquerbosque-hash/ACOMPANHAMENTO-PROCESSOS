@@ -310,6 +310,7 @@
       <button data-view="processos" onclick="showView('processos')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px; margin-right:5px;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>Processos</button>
       <button data-view="tarefas" onclick="showView('tarefas')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px; margin-right:5px;"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M3 10h18"/><path d="m9 16 2 2 4-4"/></svg>Acompanhamentos</button>
       <button data-view="metricas" onclick="showView('metricas')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px; margin-right:5px;"><path d="M3 3v18h18"/><path d="M18 17V9M13 17v-5M8 17v-3"/></svg>Métricas</button>
+      <button data-view="compliance" onclick="showView('compliance')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px; margin-right:5px;"><path d="M12 3 4 6v6c0 5 4 8 8 9 4-1 8-4 8-9V6z"/><path d="m9 12 2 2 4-4"/></svg>Compliance</button>
       <button data-view="usuarios" id="nav-usuarios" style="display:none;" onclick="showView('usuarios')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px; margin-right:5px;"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 19c0-3.5 3-5.5 6.5-5.5s6.5 2 6.5 5.5"/><circle cx="18" cy="9" r="2.5"/><path d="M15.5 13.5c2.5.3 4 1.8 4 4.5"/></svg>Usuários</button>
     </nav>
     <div class="user-chip">
@@ -421,6 +422,49 @@
       </div>
     </section>
 
+    <!-- ---------- COMPLIANCE / PROVISIONAMENTO ---------- -->
+    <section id="view-compliance" class="view">
+      <div class="page-head">
+        <div><h2>Compliance e provisionamento</h2><p>Exposição financeira, concentração de risco e sinais de prevenção — só processos ativos</p></div>
+        <button class="btn-secondary" onclick="exportarComplianceCsv()">Exportar CSV</button>
+      </div>
+
+      <div class="cards-row" id="compliance-kpi-cards"></div>
+
+      <div class="grid-2">
+        <div class="panel">
+          <h3>Exposição por banco (valor em risco)</h3>
+          <div id="compliance-bar-banco"></div>
+        </div>
+        <div class="panel">
+          <h3>Exposição por motivo (valor em risco)</h3>
+          <div id="compliance-bar-motivo"></div>
+        </div>
+      </div>
+      <div class="panel">
+        <h3>Exposição por tipo de operação (valor em risco)</h3>
+        <div id="compliance-bar-operacao"></div>
+      </div>
+
+      <div class="panel">
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:10px; margin-bottom:14px;">
+          <div>
+            <h3 style="margin-bottom:2px;">Percentual de provisionamento sugerido, por risco</h3>
+            <p style="font-size:12px; color:var(--textSecondary); margin:0;">Estimativa de quanto do valor em risco deve ser reservado, por classificação. Ajuste conforme a política financeira da Konsi.</p>
+          </div>
+        </div>
+        <div id="compliance-percentuais"></div>
+      </div>
+
+      <div class="panel">
+        <h3>Processos com maior valor em risco</h3>
+        <div class="table-wrap"><table class="table-compact">
+          <thead><tr><th>Processo</th><th>Cliente</th><th>Banco</th><th>Motivo</th><th>Operação</th><th>Risco</th><th>Evidências</th><th>Valor em risco</th></tr></thead>
+          <tbody id="compliance-top-processos-tbody"></tbody>
+        </table></div>
+      </div>
+    </section>
+
     <!-- ---------- PROCESSOS ---------- -->
     <section id="view-processos" class="view">
       <div class="page-head">
@@ -441,17 +485,23 @@
           <option value="MANUAL">Cadastrado manualmente</option>
           <option value="IMPORTACAO_CSV">Importado via CSV</option>
         </select>
+        <select id="f-evidencias">
+          <option value="">Qualquer situação de evidências</option>
+          <option value="AGUARDANDO_CONTESTACAO">Aguardando contestação</option>
+          <option value="SEM_EVIDENCIA">Sem evidência</option>
+          <option value="COM_EVIDENCIA_NAO_UTILIZADA">Com evidência — não utilizada</option>
+          <option value="COM_EVIDENCIA_UTILIZADA">Com evidência — utilizada</option>
+        </select>
         <input type="text" id="f-busca" placeholder="Buscar por nome ou nº processo">
         <span style="font-size:12px; color:var(--textSecondary); align-self:center;">Ajuizado entre</span>
         <input type="date" id="f-ajuizamento-de" title="Ajuizado a partir de">
         <span style="font-size:12px; color:var(--textSecondary); align-self:center;">e</span>
         <input type="date" id="f-ajuizamento-ate" title="Ajuizado até">
-        <button class="btn-ghost" onclick="limparFiltroAjuizamento()">Limpar datas</button>
         <span style="font-size:12px; color:var(--textSecondary); align-self:center;">Cadastrado entre</span>
         <input type="date" id="f-cadastro-de" title="Cadastrado a partir de">
         <span style="font-size:12px; color:var(--textSecondary); align-self:center;">e</span>
         <input type="date" id="f-cadastro-ate" title="Cadastrado até">
-        <button class="btn-ghost" onclick="limparFiltroCadastro()">Limpar datas</button>
+        <button class="btn-ghost" onclick="limparTodosFiltros()">Limpar filtros</button>
       </div>
       <div class="panel">
         <div class="table-wrap"><table id="tbl-processos" class="table-compact">
@@ -911,6 +961,7 @@ function showView(view){
   document.getElementById('fab-btn').style.display = view==='processos' ? 'flex' : 'none';
   if(view==='usuarios') carregarUsuarios();
   if(view==='metricas') carregarMetricas();
+  if(view==='compliance') carregarCompliance();
 }
 function openModal(id){ document.getElementById(id).classList.add('active'); }
 function closeModal(id){ document.getElementById(id).classList.remove('active'); }
@@ -966,20 +1017,22 @@ function montarFiltros(){
   const bancos = [...new Set(processosCache.map(p=>p.banco).filter(Boolean))].sort();
   const selBanco = document.getElementById('f-banco');
   selBanco.innerHTML = '<option value="">Todos os bancos</option>' + bancos.map(b=>`<option>${b}</option>`).join('');
-  ['f-banco','f-motivo','f-risco','f-busca','f-ajuizamento-de','f-ajuizamento-ate','f-status-processo','f-origem-cadastro','f-cadastro-de','f-cadastro-ate'].forEach(id=>{
+  ['f-banco','f-motivo','f-risco','f-busca','f-ajuizamento-de','f-ajuizamento-ate','f-status-processo','f-origem-cadastro','f-evidencias','f-cadastro-de','f-cadastro-ate'].forEach(id=>{
     document.getElementById(id).oninput = ()=>{ paginaProcessosAtual = 1; renderTabelaProcessos(); };
   });
   document.getElementById('pag-processos-tamanho').onchange = ()=>{ paginaProcessosAtual = 1; renderTabelaProcessos(); };
 }
 
-function limparFiltroAjuizamento(){
+function limparTodosFiltros(){
+  document.getElementById('f-banco').value = '';
+  document.getElementById('f-motivo').value = '';
+  document.getElementById('f-risco').value = '';
+  document.getElementById('f-status-processo').value = 'ATIVO';
+  document.getElementById('f-origem-cadastro').value = '';
+  document.getElementById('f-evidencias').value = '';
+  document.getElementById('f-busca').value = '';
   document.getElementById('f-ajuizamento-de').value = '';
   document.getElementById('f-ajuizamento-ate').value = '';
-  paginaProcessosAtual = 1;
-  renderTabelaProcessos();
-}
-
-function limparFiltroCadastro(){
   document.getElementById('f-cadastro-de').value = '';
   document.getElementById('f-cadastro-ate').value = '';
   paginaProcessosAtual = 1;
@@ -995,6 +1048,7 @@ function renderTabelaProcessos(){
   const ajuizAte = document.getElementById('f-ajuizamento-ate').value;
   const statusProc = document.getElementById('f-status-processo').value;
   const origemCadastro = document.getElementById('f-origem-cadastro').value;
+  const evidencias = document.getElementById('f-evidencias').value;
   const cadastroDe = document.getElementById('f-cadastro-de').value;
   const cadastroAte = document.getElementById('f-cadastro-ate').value;
   const tbody = document.querySelector('#tbl-processos tbody');
@@ -1004,6 +1058,7 @@ function renderTabelaProcessos(){
     (!risco || p.classificacao_risco===risco) &&
     (!statusProc || (p.status_processo||'ATIVO')===statusProc) &&
     (!origemCadastro || (p.origem_cadastro||'MANUAL')===origemCadastro) &&
+    (!evidencias || (p.situacao_evidencias||'AGUARDANDO_CONTESTACAO')===evidencias) &&
     (!busca || (p.nome_cliente||'').toLowerCase().includes(busca) || (p.numero_processo||'').includes(busca)) &&
     (!ajuizDe || (p.data_ajuizamento && p.data_ajuizamento >= ajuizDe)) &&
     (!ajuizAte || (p.data_ajuizamento && p.data_ajuizamento <= ajuizAte)) &&
@@ -1327,6 +1382,137 @@ function abrirDrilldown(campoFiltro, valorFiltro, campoAgrupar, labelAgrupar, ba
     return `<tr><td>${l.label}</td><td>${l.n}</td><td>${fmtMoney(l.v)}</td><td>${pct}%</td></tr>`;
   }).join('') : `<tr><td colspan="4">${emptyState('Sem dados','')}</td></tr>`;
   openModal('modal-drilldown');
+}
+
+// ---------------- COMPLIANCE / PROVISIONAMENTO ----------------
+let provisionamentoPercentuaisCache = { BAIXO:10, MEDIO:30, ALTO:60, CRITICO:90 };
+
+async function carregarProvisionamentoPercentuais(){
+  const { data, error } = await sb.from('provisionamento_percentuais').select('*');
+  if(error || !data?.length) return; // mantém os valores padrão se a tabela ainda não existir/estiver vazia
+  data.forEach(r=>{ provisionamentoPercentuaisCache[r.classificacao_risco] = Number(r.percentual); });
+}
+
+function irParaProcessosComFiltro(campoFiltroId, valor){
+  showView('processos');
+  document.getElementById(campoFiltroId).value = valor;
+  paginaProcessosAtual = 1;
+  renderTabelaProcessos();
+}
+
+// Agrupa os processos ativos por um campo (banco/motivo/tipo_operacao),
+// somando quantidade e valor em risco — usado nos três painéis de barra.
+function agruparPorCampoValor(lista, campo){
+  const grupos = {};
+  lista.forEach(p=>{
+    const chave = p[campo] || '(sem informação)';
+    grupos[chave] = grupos[chave] || { n:0, v:0 };
+    grupos[chave].n++;
+    grupos[chave].v += Number(p.valor_risco)||0;
+  });
+  return Object.entries(grupos).map(([label,val])=>({label, n:val.n, v:val.v})).sort((a,b)=>b.v-a.v);
+}
+
+function renderBarrasValor(container, itens, onClickItem){
+  if(!itens.length){ container.innerHTML = emptyState('Sem dados ainda',''); return; }
+  const max = Math.max(...itens.map(i=>i.v), 1);
+  container.innerHTML = itens.map((i,idx)=>`
+    <div class="bar-row${onClickItem ? ' expandable' : ''}" style="grid-template-columns:140px 1fr 150px;" data-idx="${idx}">
+      <div class="bar-label" title="${i.label}">${i.label}</div>
+      <div class="bar-track"><div class="bar-fill" style="width:${Math.round(i.v/max*100)}%;"></div></div>
+      <div class="bar-value">${fmtMoney(i.v)} · ${i.n}</div>
+    </div>`).join('');
+  if(onClickItem){
+    container.querySelectorAll('.bar-row').forEach(el=>{
+      el.addEventListener('click', ()=> onClickItem(itens[parseInt(el.dataset.idx,10)]));
+    });
+  }
+}
+
+async function carregarCompliance(){
+  await carregarProvisionamentoPercentuais();
+  const ativos = processosCache.filter(p=>(p.status_processo||'ATIVO')==='ATIVO');
+  const total = ativos.length;
+  const valorTotalRisco = ativos.reduce((s,p)=>s+(Number(p.valor_risco)||0),0);
+  const criticos = ativos.filter(p=>['ALTO','CRITICO'].includes(p.classificacao_risco)).length;
+
+  const valorProvisionado = ativos.reduce((s,p)=>{
+    const pct = provisionamentoPercentuaisCache[p.classificacao_risco] ?? 0;
+    return s + (Number(p.valor_risco)||0) * (pct/100);
+  }, 0);
+
+  const naoUtilizadas = ativos.filter(p=>p.situacao_evidencias==='COM_EVIDENCIA_NAO_UTILIZADA').length;
+
+  document.getElementById('compliance-kpi-cards').innerHTML = `
+    <div class="kpi-card" title="Soma do valor em risco de todos os processos ativos"><div><div class="label">Valor total em risco</div><div class="value">${fmtMoney(valorTotalRisco)}</div></div><div class="icon-box">${ICON_COIN}</div></div>
+    <div class="kpi-card alert" title="Estimativa aplicando o percentual de provisionamento de cada classificação de risco sobre o valor em risco. Ajuste os percentuais abaixo."><div><div class="label">Provisão sugerida</div><div class="value">${fmtMoney(valorProvisionado)}</div></div><div class="icon-box">${ICON_SHIELD}</div></div>
+    <div class="kpi-card ${criticos>0?'alert':''}" title="Processos ativos com risco Alto ou Crítico"><div><div class="label">Risco alto/crítico</div><div class="value">${criticos}</div></div><div class="icon-box">${ICON_ALERT}</div></div>
+    <div class="kpi-card ${naoUtilizadas>0?'alert':''}" title="Enviamos evidência, mas o banco não está usando no processo — clique para ver a lista" style="cursor:pointer;" onclick="irParaProcessosComFiltro('f-evidencias','COM_EVIDENCIA_NAO_UTILIZADA')"><div><div class="label">Evidências não utilizadas pelo banco</div><div class="value">${naoUtilizadas}</div></div><div class="icon-box">${ICON_FOLDER}</div></div>
+  `;
+
+  renderBarrasValor(document.getElementById('compliance-bar-banco'), agruparPorCampoValor(ativos,'banco'),
+    (item)=> abrirDrilldown('banco', item.label, 'motivo', 'Motivo', ativos));
+  renderBarrasValor(document.getElementById('compliance-bar-motivo'), agruparPorCampoValor(ativos,'motivo'),
+    (item)=> abrirDrilldown('motivo', item.label, 'banco', 'Banco', ativos));
+  renderBarrasValor(document.getElementById('compliance-bar-operacao'), agruparPorCampoValor(ativos,'tipo_operacao'),
+    (item)=> abrirDrilldown('tipo_operacao', item.label, 'banco', 'Banco', ativos));
+
+  const isAdmin = currentUserIsAdmin;
+  document.getElementById('compliance-percentuais').innerHTML = `
+    <div style="display:flex; gap:16px; flex-wrap:wrap; align-items:flex-end;">
+      ${['BAIXO','MEDIO','ALTO','CRITICO'].map(r=>`
+        <div>
+          <label style="display:block; font-size:11px; color:var(--textSecondary); margin-bottom:4px;">${r}</label>
+          ${isAdmin
+            ? `<input type="number" min="0" max="100" step="1" id="prov-pct-${r}" value="${provisionamentoPercentuaisCache[r]}" style="width:80px;">`
+            : `<div style="font-size:14px; color:var(--textPrimary); font-weight:600;">${provisionamentoPercentuaisCache[r]}%</div>`}
+        </div>
+      `).join('')}
+      ${isAdmin ? `<button class="btn-secondary" onclick="salvarProvisionamentoPercentuais()">Salvar percentuais</button>` : ''}
+    </div>
+    ${!isAdmin ? '<p class="field-note" style="margin-top:10px;">Só administradores podem editar esses percentuais.</p>' : ''}
+  `;
+
+  const topProcessos = [...ativos].sort((a,b)=>(Number(b.valor_risco)||0)-(Number(a.valor_risco)||0)).slice(0,15);
+  document.getElementById('compliance-top-processos-tbody').innerHTML = topProcessos.length ? topProcessos.map(p=>`
+    <tr class="clickable" onclick="abrirDetalhe('${p.id}')">
+      <td class="truncate" title="${p.numero_processo}">${p.numero_processo}</td>
+      <td class="truncate" title="${p.nome_cliente}">${p.nome_cliente}</td>
+      <td>${p.banco}</td>
+      <td class="truncate" title="${p.motivo}">${p.motivo}</td>
+      <td>${p.tipo_operacao||'—'}</td>
+      <td><span class="badge badge-${p.classificacao_risco}">${p.classificacao_risco}</span></td>
+      <td><span class="badge badge-${p.situacao_evidencias||'AGUARDANDO_CONTESTACAO'}">${LABEL_EVIDENCIAS[p.situacao_evidencias]||LABEL_EVIDENCIAS.AGUARDANDO_CONTESTACAO}</span></td>
+      <td>${fmtMoney(p.valor_risco)}</td>
+    </tr>`).join('') : `<tr><td colspan="8">${emptyState('Sem processos ativos com valor em risco cadastrado','')}</td></tr>`;
+}
+
+async function salvarProvisionamentoPercentuais(){
+  const linhas = ['BAIXO','MEDIO','ALTO','CRITICO'].map(r=>({
+    classificacao_risco: r,
+    percentual: parseFloat(document.getElementById(`prov-pct-${r}`).value) || 0,
+    atualizado_por: currentUser.id,
+  }));
+  const { error } = await sb.from('provisionamento_percentuais').upsert(linhas, { onConflict: 'classificacao_risco' });
+  if(error){ toast('Erro ao salvar: '+error.message); return; }
+  toast('Percentuais de provisionamento atualizados.');
+  await carregarCompliance();
+}
+
+function exportarComplianceCsv(){
+  const ativos = processosCache.filter(p=>(p.status_processo||'ATIVO')==='ATIVO');
+  const cabecalho = ['numero_processo','tribunal','banco','convenio','tipo_operacao','motivo','classificacao_risco','valor_risco','situacao_evidencias','situacao_atual','data_ajuizamento'];
+  const linhas = ativos.map(p=> cabecalho.map(c=> {
+    const v = p[c];
+    const texto = v==null ? '' : String(v).replace(/"/g,'""');
+    return `"${texto}"`;
+  }).join(','));
+  const csv = [cabecalho.join(','), ...linhas].join('\n');
+  const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = `compliance_processos_ativos_${new Date().toISOString().slice(0,10)}.csv`;
+  link.click();
 }
 
 function abrirDetalheBanco(){
