@@ -1,4 +1,3 @@
-// teste de integração com github
 // Edge Function: sync-datajud
 // É chamada pelo PRÓPRIO index.html quando alguém loga no sistema (não roda
 // sozinha em segundo plano por conta própria, não depende de pg_cron). Ao ser
@@ -21,6 +20,12 @@
 //      existir uma aberta esperando revisão para aquele mesmo processo.
 //   5. Não envia e-mail/Slack — a novidade aparece no painel "Atualizações
 //      recentes" (tela inicial) e como tarefa pendente (aba Acompanhamentos).
+//
+// MODO "PROCESSO ÚNICO": além do fluxo acima (sincronização geral em lote),
+// esta função também aceita ser chamada com { "processo_id": "..." } no
+// corpo da requisição — nesse caso, consulta e enriquece só aquele processo
+// na hora, de forma síncrona (sem throttle, sem waitUntil). É esse modo que
+// o index.html usa logo depois de alguém cadastrar um processo manualmente.
 //
 // Deploy: supabase functions deploy sync-datajud
 // Variáveis de ambiente necessárias (Project Settings > Edge Functions > Secrets):
@@ -159,7 +164,77 @@ async function criarTarefaInspecao(admin: ReturnType<typeof createClient>, proce
   return !error;
 }
 
-// Monta o payload de update com os metadados da capa processual.
+// Processa UM processo: consulta o DataJud, grava movimentações novas, cria
+// tarefa de inspeção se for o caso, e atualiza os metadados da capa. Usada
+// tanto pelo lote da sincronização geral quanto pelo modo "processo único"
+// (disparado na hora, quando alguém cadastra um processo manualmente).
+async function processarUmProcesso(
+  admin: ReturnType<typeof createClient>,
+  processo: { id: string; numero_processo: string; tribunal: string; situacao_atual: string; classificacao_risco: string; data_ajuizamento?: string | null },
+) {
+  const consulta = await consultarDatajud(processo.tribunal, processo.numero_processo);
+  const erros: any[] = [];
+
+  if (consulta.erro) {
+    await admin
+      .from("processos_judiciais")
+      .update({ datajud_ultima_consulta: new Date().toISOString(), datajud_ultimo_erro: consulta.erro })
+      .eq("id", processo.id);
+    return { erro: consulta.erro, novas_movimentacoes: 0, tarefa_criada: false, erros };
+  }
+
+  // Tenta inserir CADA movimentação vinda do DataJud (não só a mais recente).
+  // O índice único (processo_id + codigo_movimento_datajud + data_movimentacao)
+  // faz o banco recusar sozinho o que já estava registrado — por isso inserimos
+  // uma a uma e simplesmente ignoramos o erro de duplicidade (código 23505).
+  let novasNesteProcesso = 0;
+  let novasAposCorteNesteProcesso = 0;
+  for (const mov of consulta.movimentos || []) {
+    const codigo = String(mov.codigo ?? mov.nome ?? "");
+    const dataMovimentacao = (mov.dataHora || "").slice(0, 10); // yyyy-mm-dd
+    if (!dataMovimentacao) continue;
+
+    const { error: erroInsert } = await admin.from("movimentacoes_processo").insert({
+      processo_id: processo.id,
+      data_movimentacao: dataMovimentacao,
+      descricao: mov.nome || "Movimentação identificada via DataJud",
+      risco_no_momento: processo.classificacao_risco,
+      situacao_no_momento: processo.situacao_atual,
+      origem: "ROBO_DATAJUD",
+      codigo_movimento_datajud: codigo,
+    });
+
+    if (!erroInsert) {
+      novasNesteProcesso++;
+      // Só conta pra fins de "gerar tarefa" se a movimentação for recente
+      // (ver DATA_CORTE_TAREFA_INSPECAO) — movimentação antiga entra no
+      // histórico normalmente, mas não dispara tarefa de inspeção.
+      if (!DATA_CORTE_TAREFA_INSPECAO || dataMovimentacao >= DATA_CORTE_TAREFA_INSPECAO) {
+        novasAposCorteNesteProcesso++;
+      }
+    } else if (erroInsert.code !== "23505") {
+      // 23505 = violação de índice único = já existia, ignora silenciosamente.
+      erros.push(`Falha ao gravar movimentação: ${erroInsert.message}`);
+    }
+  }
+
+  // Só cria a tarefa de inspeção se entrou movimentação nova E recente o
+  // suficiente (ver DATA_CORTE_TAREFA_INSPECAO) — não fica agendando
+  // revisão pra movimentação antiga vinda do backlog histórico. No cadastro
+  // manual isso raramente vai acontecer (processo novo, sem histórico
+  // recente ainda), mas mantém a mesma regra por consistência.
+  let tarefaCriada = false;
+  if (novasAposCorteNesteProcesso > 0) {
+    tarefaCriada = await criarTarefaInspecao(admin, processo);
+  }
+
+  await admin
+    .from("processos_judiciais")
+    .update(montarPayloadMetadados(processo, consulta.capa))
+    .eq("id", processo.id);
+
+  return { erro: null, novas_movimentacoes: novasNesteProcesso, tarefa_criada: tarefaCriada, erros };
+}
 // Usa "??" de propósito: se a capa não trouxer um campo (undefined ou null),
 // o campo correspondente fica de fora do payload e o valor já salvo no banco
 // não é apagado — só atualizamos quando o DataJud realmente informa algo.
@@ -245,66 +320,16 @@ async function executarSincronizacao(admin: ReturnType<typeof createClient>) {
 
   for (const processo of processos || []) {
     resultado.verificados++;
-    const consulta = await consultarDatajud(processo.tribunal, processo.numero_processo);
+    const resultadoProcesso = await processarUmProcesso(admin, processo);
 
-    if (consulta.erro) {
-      resultado.erros.push({ processo: processo.numero_processo, erro: consulta.erro });
-      await admin
-        .from("processos_judiciais")
-        .update({ datajud_ultima_consulta: new Date().toISOString(), datajud_ultimo_erro: consulta.erro })
-        .eq("id", processo.id);
+    if (resultadoProcesso.erro) {
+      resultado.erros.push({ processo: processo.numero_processo, erro: resultadoProcesso.erro });
       continue;
     }
-
-    // Tenta inserir CADA movimentação vinda do DataJud (não só a mais recente).
-    // O índice único (processo_id + codigo_movimento_datajud + data_movimentacao)
-    // faz o banco recusar sozinho o que já estava registrado — por isso inserimos
-    // uma a uma e simplesmente ignoramos o erro de duplicidade (código 23505).
-    let novasNesteProcesso = 0;
-    let novasAposCorteNesteProcesso = 0;
-    for (const mov of consulta.movimentos || []) {
-      const codigo = String(mov.codigo ?? mov.nome ?? "");
-      const dataMovimentacao = (mov.dataHora || "").slice(0, 10); // yyyy-mm-dd
-      if (!dataMovimentacao) continue;
-
-      const { error: erroInsert } = await admin.from("movimentacoes_processo").insert({
-        processo_id: processo.id,
-        data_movimentacao: dataMovimentacao,
-        descricao: mov.nome || "Movimentação identificada via DataJud",
-        risco_no_momento: processo.classificacao_risco,
-        situacao_no_momento: processo.situacao_atual,
-        origem: "ROBO_DATAJUD",
-        codigo_movimento_datajud: codigo,
-      });
-
-      if (!erroInsert) {
-        novasNesteProcesso++;
-        // Só conta pra fins de "gerar tarefa" se a movimentação for recente
-        // (ver DATA_CORTE_TAREFA_INSPECAO) — movimentação antiga entra no
-        // histórico normalmente, mas não dispara tarefa de inspeção.
-        if (!DATA_CORTE_TAREFA_INSPECAO || dataMovimentacao >= DATA_CORTE_TAREFA_INSPECAO) {
-          novasAposCorteNesteProcesso++;
-        }
-      } else if (erroInsert.code !== "23505") {
-        // 23505 = violação de índice único = já existia, ignora silenciosamente.
-        // Qualquer outro erro é reportado.
-        resultado.erros.push({ processo: processo.numero_processo, erro: `Falha ao gravar movimentação: ${erroInsert.message}` });
-      }
-    }
-    resultado.novas_movimentacoes += novasNesteProcesso;
-
-    // Só cria a tarefa de inspeção se entrou movimentação nova E recente o
-    // suficiente (ver DATA_CORTE_TAREFA_INSPECAO) — não fica agendando
-    // revisão pra movimentação antiga vinda do backlog histórico.
-    if (novasAposCorteNesteProcesso > 0) {
-      const criada = await criarTarefaInspecao(admin, processo);
-      if (criada) resultado.tarefas_criadas++;
-    }
-
-    await admin
-      .from("processos_judiciais")
-      .update(montarPayloadMetadados(processo, consulta.capa))
-      .eq("id", processo.id);
+    resultado.novas_movimentacoes += resultadoProcesso.novas_movimentacoes;
+    if (resultadoProcesso.tarefa_criada) resultado.tarefas_criadas++;
+    resultadoProcesso.erros.forEach((erro: string) =>
+      resultado.erros.push({ processo: processo.numero_processo, erro }));
   }
 
   // Só grava o resumo ao final — é essa gravação que sumia quando a conexão
@@ -313,14 +338,49 @@ async function executarSincronizacao(admin: ReturnType<typeof createClient>) {
   await admin.from("datajud_sync_status").update({ ultima_execucao_resumo: resultado }).eq("id", 1);
 }
 
-Deno.serve(async (_req) => {
+Deno.serve(async (req) => {
   const corsHeaders = {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
   };
+  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   try {
     const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
+
+    // MODO "PROCESSO ÚNICO": usado pelo cadastro manual de processo, pra
+    // preencher os dados do DataJud na hora, assim que o processo é salvo.
+    // Não passa pelo throttle geral (é uma ação pontual do usuário, não o
+    // robô rodando sozinho) e responde de forma síncrona (só 1 consulta
+    // externa, rápido o suficiente pra não precisar de EdgeRuntime.waitUntil).
+    let processoId: string | undefined;
+    try {
+      const body = await req.json();
+      processoId = body?.processo_id;
+    } catch {
+      // corpo vazio/ausente = segue pro modo de sincronização geral
+    }
+
+    if (processoId) {
+      const { data: processo, error: erroBusca } = await admin
+        .from("processos_judiciais")
+        .select("id, numero_processo, tribunal, situacao_atual, classificacao_risco, data_ajuizamento")
+        .eq("id", processoId)
+        .single();
+
+      if (erroBusca || !processo) {
+        return new Response(JSON.stringify({ error: "Processo não encontrado." }), {
+          status: 404,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const resultado = await processarUmProcesso(admin, processo);
+      return new Response(JSON.stringify(resultado), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     // Throttle: se já rodou há menos de MINUTOS_MINIMOS_ENTRE_EXECUCOES, não
     // consulta o DataJud de novo — só informa que pulou por ter sido recente.
