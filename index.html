@@ -153,6 +153,7 @@
   .timeline .tdate{ font-size:12px; color:var(--textSecondary); font-weight:600; }
   .timeline .tdesc{ font-size:13px; margin:2px 0; color:var(--textPrimary); }
   .timeline .tresp{ font-size:11px; color:var(--textMuted); }
+  .badge-robo{ display:inline-block; margin-left:6px; padding:2px 8px; border-radius:999px; font-size:10px; font-weight:700; background:var(--sucessoBg); color:var(--konsiTeal); vertical-align:middle; }
 
   .toast{
     position:fixed; bottom:24px; left:50%; transform:translateX(-50%); background:var(--konsiTeal); color:#08130F;
@@ -320,6 +321,14 @@
         <div id="chart-por-motivo"></div>
       </div>
 
+      <div class="panel">
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; margin-bottom:16px;">
+          <h3 style="margin-bottom:0;">Atualizações recentes</h3>
+          <span style="font-size:12px; color:var(--textSecondary);">Últimas movimentações identificadas (manuais e via DataJud/CNJ)</span>
+        </div>
+        <div id="lista-atualizacoes-recentes"></div>
+      </div>
+
       <!-- ---------- MODAL: DETALHE POR BANCO ---------- -->
       <div class="modal-overlay" id="modal-banco">
         <div class="modal wide">
@@ -451,8 +460,8 @@
     <div class="modal-head"><h3>Cadastrar novo processo</h3><button onclick="closeModal('modal-novo-processo')">✕</button></div>
     <p class="field-note">Não encontrou o banco, convênio, tipo de operação ou motivo na lista? Escolha "+ Adicionar novo..." no campo — o valor fica salvo para as próximas vezes.</p>
     <div class="form-row">
-      <div><label>Número do processo</label><input id="np-numero" placeholder="0000000-00.0000.0.00.0000" onblur="identificarTribunalAutomatico('np-numero','np-tribunal')"></div>
-      <div><label>Tribunal</label><select id="np-tribunal"><option value="">Selecione...</option></select></div>
+      <div><label>Número do processo</label><input id="np-numero" placeholder="0000000-00.0000.0.00.0000"></div>
+      <div><label>Tribunal</label><input id="np-tribunal" placeholder="TJBA, TJSP, TRF1..."></div>
     </div>
     <div class="form-row">
       <div><label>Nome completo do cliente</label><input id="np-nome"></div>
@@ -524,7 +533,7 @@
           </div>
           <div class="form-row">
             <div><label>ADE do contrato</label><input id="det-ade"></div>
-            <div><label>Tribunal</label><select id="det-tribunal"><option value="">Selecione...</option></select></div>
+            <div><label>Tribunal</label><input id="det-tribunal" placeholder="TJBA, TJSP, TRF1..."></div>
           </div>
           <div class="form-row">
             <div><label>Banco</label><select id="det-banco" onchange="tratarNovoValorDominio('det-banco','BANCO')"></select></div>
@@ -625,6 +634,7 @@ const SUPABASE_URL = "https://bnnifubwgbqmrbodwwph.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_lA4dktH-wj2s33O0YTeQ2g_kqiejF5b";
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 const FN_ADMIN_USUARIOS = `${SUPABASE_URL}/functions/v1/admin-usuarios`;
+const FN_SYNC_DATAJUD = `${SUPABASE_URL}/functions/v1/sync-datajud`;
 
 let currentUser = null;
 let currentUserIsAdmin = false;
@@ -666,6 +676,34 @@ async function afterLogin(){
   currentUserIsAdmin = !!perfil?.is_admin;
   document.getElementById('nav-usuarios').style.display = currentUserIsAdmin ? 'inline-block' : 'none';
   await carregarTudo();
+  sincronizarComDatajud(); // dispara em segundo plano, não trava a tela de login
+}
+
+// Chama o robô do DataJud ao logar. A própria função decide se já rodou
+// recentemente (ver MINUTOS_MINIMOS_ENTRE_EXECUCOES no back-end) e pula
+// sem consultar o CNJ de novo se for o caso. Se encontrar movimentação
+// nova, o painel "Atualizações recentes" é atualizado sozinho ao final.
+async function sincronizarComDatajud(){
+  try{
+    const { data: { session } } = await sb.auth.getSession();
+    if(!session) return;
+    const resp = await fetch(FN_SYNC_DATAJUD, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${session.access_token}`,
+        'apikey': SUPABASE_ANON_KEY,
+        'Content-Type': 'application/json',
+      },
+    });
+    const resultado = await resp.json();
+    if(resultado?.novas_movimentacoes > 0){
+      await carregarAtualizacoesRecentes();
+    }
+  }catch(e){
+    // Falha silenciosa de propósito: se o DataJud estiver fora do ar ou a
+    // chave tiver expirado, isso não deve atrapalhar quem só quer usar o sistema.
+    console.warn('Sincronização com o DataJud não completou:', e);
+  }
 }
 
 // ---------------- RECUPERAÇÃO DE SENHA ----------------
@@ -882,6 +920,7 @@ async function carregarDashboard(){
   const valorTotal = ativos.reduce((s,p)=>s+(Number(p.valor_risco)||0),0);
   const criticos = ativos.filter(p=>['ALTO','CRITICO'].includes(p.classificacao_risco)).length;
   const { count: tarefasAtrasadas } = await sb.from('tarefas_acompanhamento').select('id',{count:'exact', head:true}).eq('status','ATRASADA');
+  carregarAtualizacoesRecentes();
 
   // % de êxito considera todos os processos concluídos, mesmo os já arquivados
   const ganhos = processosCache.filter(p=>p.resultado==='GANHO').length;
@@ -940,6 +979,32 @@ async function carregarDashboard(){
       </div>`;
     }).join('');
   }
+}
+
+async function carregarAtualizacoesRecentes(){
+  const el = document.getElementById('lista-atualizacoes-recentes');
+  if(!el) return;
+  const { data, error } = await sb
+    .from('movimentacoes_processo')
+    .select('id, data_movimentacao, descricao, origem, criado_em, processo_id, processos_judiciais(numero_processo, nome_cliente, banco), usuarios_perfil(nome_exibicao)')
+    .order('criado_em', { ascending: false })
+    .limit(8);
+
+  if(error || !data || !data.length){
+    el.innerHTML = emptyState('Nenhuma movimentação registrada ainda', 'As atualizações identificadas manualmente ou pelo robô do DataJud vão aparecer aqui.');
+    return;
+  }
+
+  el.innerHTML = `<ul class="timeline">${data.map(m=>{
+    const p = m.processos_judiciais || {};
+    const isRobo = m.origem === 'ROBO_DATAJUD';
+    const responsavel = isRobo ? 'Identificado automaticamente (DataJud/CNJ)' : (m.usuarios_perfil?.nome_exibicao || 'Responsável não identificado');
+    return `<li>
+      <div class="tdate">${fmtDate(m.data_movimentacao)} ${isRobo ? '<span class="badge-robo" title="Identificado automaticamente via API do DataJud/CNJ">NOVO · DataJud</span>' : ''}</div>
+      <div class="tdesc"><strong>${p.numero_processo || ''}</strong> — ${p.nome_cliente || ''} (${p.banco || ''})<br>${m.descricao}</div>
+      <div class="tresp">${responsavel}</div>
+    </li>`;
+  }).join('')}</ul>`;
 }
 
 function diasEntre(d1, d2){
@@ -1188,62 +1253,11 @@ async function salvarMetricaMensal(){
 }
 
 // ---------------- NOVO PROCESSO ----------------
-// Lista de siglas de tribunais (TJSP, TJBA, TRF1...), carregada uma única vez
-// da tabela tribunais_cnj e reaproveitada para preencher os selects.
-let TRIBUNAIS_SIGLAS_CACHE = null;
-async function getTribunaisSiglas(){
-  if(TRIBUNAIS_SIGLAS_CACHE) return TRIBUNAIS_SIGLAS_CACHE;
-  const { data, error } = await sb.from('tribunais_cnj').select('sigla').order('sigla');
-  if(error){
-    console.error('Erro ao carregar lista de tribunais:', error);
-    return [];
-  }
-  TRIBUNAIS_SIGLAS_CACHE = [...new Set(data.map(r => r.sigla).filter(Boolean))].sort();
-  return TRIBUNAIS_SIGLAS_CACHE;
-}
-
-// Popula um <select> de tribunal com as siglas, preservando o valor já
-// selecionado (usado tanto no cadastro quanto na edição).
-async function preencherSelectTribunais(id){
-  const select = document.getElementById(id);
-  const valorAtual = select.value;
-  const siglas = await getTribunaisSiglas();
-  select.innerHTML = '<option value="">Selecione...</option>' +
-    siglas.map(s => `<option value="${s}">${s}</option>`).join('');
-  if(valorAtual) select.value = valorAtual;
-}
-
-// Identifica o tribunal automaticamente a partir do número CNJ, chamando a
-// função fn_identificar_tribunal criada no Supabase. Roda sempre que o campo
-// número perde o foco, atualizando o select mesmo que já tivesse um valor —
-// assim, corrigir o número também corrige o tribunal.
-async function identificarTribunalAutomatico(idCampoNumero, idCampoTribunal){
-  const numero = document.getElementById(idCampoNumero).value.trim();
-  const campoTribunal = document.getElementById(idCampoTribunal);
-  if(!numero) return;
-
-  const { data, error } = await sb.rpc('fn_identificar_tribunal', { p_numero: numero });
-  if(error){
-    console.error('Erro ao identificar tribunal:', error);
-    return;
-  }
-  if(data){
-    // garante que o select já está populado antes de tentar marcar o valor
-    if(!campoTribunal.options || campoTribunal.options.length <= 1){
-      await preencherSelectTribunais(idCampoTribunal);
-    }
-    campoTribunal.value = data;
-  } else {
-    toast('Não foi possível identificar o tribunal a partir desse número. Confira o formato ou selecione manualmente.');
-  }
-}
-
 function openNovoProcesso(){
   preencherSelectDominio('np-banco','BANCO');
   preencherSelectDominio('np-convenio','CONVENIO');
   preencherSelectDominio('np-operacao','OPERACAO');
   preencherSelectDominio('np-motivo','MOTIVO');
-  preencherSelectTribunais('np-tribunal');
   openModal('modal-novo-processo');
 }
 
@@ -1321,12 +1335,11 @@ async function abrirDetalhe(id){
   openModal('modal-detalhe');
 }
 
-async function abrirEdicaoProcesso(){
+function abrirEdicaoProcesso(){
   const p = processosCache.find(x=>x.id===processoAtualId);
   document.getElementById('det-nome').value = p.nome_cliente || '';
   document.getElementById('det-cpf').value = p.cpf || '';
   document.getElementById('det-ade').value = p.ade || '';
-  await preencherSelectTribunais('det-tribunal');
   document.getElementById('det-tribunal').value = p.tribunal || '';
   preencherSelectDominio('det-banco','BANCO', p.banco);
   preencherSelectDominio('det-convenio','CONVENIO', p.convenio);
