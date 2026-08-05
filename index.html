@@ -681,8 +681,10 @@ async function afterLogin(){
 
 // Chama o robô do DataJud ao logar. A própria função decide se já rodou
 // recentemente (ver MINUTOS_MINIMOS_ENTRE_EXECUCOES no back-end) e pula
-// sem consultar o CNJ de novo se for o caso. Se encontrar movimentação
-// nova, o painel "Atualizações recentes" é atualizado sozinho ao final.
+// sem consultar o CNJ de novo se for o caso. A sincronização de verdade roda
+// em segundo plano no servidor (ver EdgeRuntime.waitUntil em sync-datajud/index.ts),
+// então não dá pra saber na hora se achou algo novo — por isso recarregamos o
+// painel de novidades de novo depois de um tempo, dando chance do robô terminar.
 async function sincronizarComDatajud(){
   try{
     const { data: { session } } = await sb.auth.getSession();
@@ -696,8 +698,11 @@ async function sincronizarComDatajud(){
       },
     });
     const resultado = await resp.json();
-    if(resultado?.novas_movimentacoes > 0){
-      await carregarAtualizacoesRecentes();
+    if(resultado?.iniciado){
+      // dá um tempo pro robô rodar no servidor antes de recarregar o painel;
+      // se a pessoa já tiver saído da tela inicial, não tem problema, é só
+      // uma consulta a mais sem efeito visível.
+      setTimeout(() => { carregarAtualizacoesRecentes(); }, 20000);
     }
   }catch(e){
     // Falha silenciosa de propósito: se o DataJud estiver fora do ar ou a
