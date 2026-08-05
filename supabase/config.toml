@@ -1,0 +1,16 @@
+# Arquivo de configuração do projeto Supabase — Sistema de Processos Judiciais (Konsi)
+# Esse arquivo normalmente é gerado pelo comando `supabase init`, que não tinha sido
+# rodado até agora. Ele não contém nenhum segredo — só identifica o projeto e
+# declara como as Edge Functions devem se comportar.
+#
+# Referência completa: https://supabase.com/docs/guides/local-development/cli/config
+
+# Identifica este projeto localmente (não precisa ser o mesmo nome do projeto no painel).
+project_id = "konsi-processos-judiciais"
+
+[functions.sync-datajud]
+# true = a função exige um token de sessão válido (Authorization: Bearer ...) para
+# ser chamada. É assim que já está funcionando: só quem está logado no sistema
+# consegue disparar a sincronização, porque é o próprio index.html que chama essa
+# função passando o token de quem acabou de logar.
+verify_jwt = true
