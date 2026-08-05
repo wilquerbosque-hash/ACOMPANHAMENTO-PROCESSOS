@@ -1675,11 +1675,14 @@ function processarLinhasCsv(linhas){
     const numero = (linha.numero_processo||'').trim();
     const nome = (linha.nome_cliente||'').trim();
     const banco = (linha.banco||'').trim().toUpperCase();
+    const tribunal = (linha.tribunal||'').trim().toUpperCase();
     const numLinha = idx + 2; // +2: cabeçalho é a linha 1
 
     let status = null;
     if(!numero || !nome || !banco){
       status = 'Erro: falta número, cliente ou banco'; countInvalidos++;
+    } else if(!tribunal){
+      status = 'Erro: falta tribunal'; countInvalidos++;
     } else if(vistosNoArquivo.has(numero)){
       status = 'Duplicado no arquivo'; countDupArquivo++;
     } else if(existentes.has(numero)){
@@ -1690,7 +1693,7 @@ function processarLinhasCsv(linhas){
       vistosNoArquivo.add(numero);
       const payload = {
         numero_processo: numero,
-        tribunal: (linha.tribunal||'').trim() || null,
+        tribunal: tribunal,
         nome_cliente: nome,
         ade: (linha.ade||'').trim() || null,
         banco: banco,
@@ -1702,7 +1705,11 @@ function processarLinhasCsv(linhas){
         data_ajuizamento: normalizarDataCsv(linha.data_ajuizamento),
         classificacao_risco: normalizarRiscoCsv(linha.classificacao_risco),
         valor_risco: parseFloat((linha.valor_risco||'').replace(',','.')) || null,
-        situacao_atual: (linha.situacao_atual||'').trim() || undefined,
+        // Nunca deixar undefined aqui: numa inserção em lote (várias linhas de
+        // uma vez), colunas omitidas em algumas linhas viram NULL explícito
+        // em vez de aplicar o valor padrão do banco — e situacao_atual não
+        // aceita NULL. Por isso sempre mandamos um texto concreto.
+        situacao_atual: (linha.situacao_atual||'').trim() || 'AGUARDANDO CITAÇÃO/CIÊNCIA',
         situacao_evidencias: normalizarEvidenciasCsv(linha.situacao_evidencias),
         responsavel_cadastro: currentUser.id,
       };
