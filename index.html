@@ -7,6 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
 <style>
   :root{
     --konsiTeal:#17AC8E;
@@ -222,6 +223,8 @@
   .pie-total-label{ font-size:9px; color:var(--textSecondary); text-transform:uppercase; letter-spacing:.03em; }
   .pie-legend{ display:flex; flex-direction:column; gap:8px; font-size:12px; flex:1; min-width:140px; padding-right:6px; }
   .pie-legend-item{ display:flex; align-items:center; gap:8px; }
+  .pie-legend-item--clicavel{ cursor:pointer; border-radius:6px; padding:3px 4px; margin:-3px -4px; transition:background .15s; }
+  .pie-legend-item--clicavel:hover{ background:#221F1B; }
   .pie-dot{ width:10px; height:10px; border-radius:50%; flex-shrink:0; }
   .pie-legend-label{ flex:1; color:var(--textPrimary); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .pie-legend-value{ color:var(--textSecondary); font-size:11px; white-space:nowrap; }
@@ -355,6 +358,18 @@
           </table></div>
         </div>
       </div>
+
+      <!-- ---------- MODAL: DRILL-DOWN GENÉRICO (clique em qualquer fatia dos gráficos) ---------- -->
+      <div class="modal-overlay" id="modal-drilldown">
+        <div class="modal wide">
+          <div class="modal-head"><h3 id="drill-titulo">Detalhamento</h3><button onclick="closeModal('modal-drilldown')">✕</button></div>
+          <p id="drill-subtitulo" style="font-size:12px; color:var(--textSecondary); margin:-8px 0 14px;"></p>
+          <div class="table-wrap"><table id="tbl-drilldown">
+            <thead></thead>
+            <tbody></tbody>
+          </table></div>
+        </div>
+      </div>
       <div class="panel">
         <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:10px;">
           <div>
@@ -405,6 +420,7 @@
     <section id="view-processos" class="view">
       <div class="page-head">
         <div><h2>Processos judiciais</h2><p>Todos os processos com o banco no polo passivo</p></div>
+        <button class="btn-secondary" onclick="abrirImportarCsv()">Importar CSV</button>
       </div>
       <div class="filters">
         <select id="f-banco"><option value="">Todos os bancos</option></select>
@@ -539,6 +555,39 @@
     <div class="form-actions">
       <button class="btn-secondary" onclick="closeModal('modal-novo-processo')">Cancelar</button>
       <button class="btn-primary" style="width:auto" onclick="salvarNovoProcesso()">Salvar processo</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ MODAL: IMPORTAR CSV EM LOTE ============ -->
+<div class="modal-overlay" id="modal-importar-csv">
+  <div class="modal wide">
+    <div class="modal-head"><h3>Importar processos via CSV</h3><button onclick="fecharImportarCsv()">✕</button></div>
+    <p class="field-note">
+      Colunas aceitas (cabeçalho na primeira linha, nomes exatamente assim): <code>numero_processo</code> e <code>nome_cliente</code> e <code>banco</code> (obrigatórias); <code>tribunal</code>, <code>cpf</code>, <code>ade</code>, <code>convenio</code>, <code>tipo_operacao</code>, <code>motivo</code>, <code>valor_operacao</code>, <code>data_operacao</code>, <code>data_ajuizamento</code>, <code>classificacao_risco</code> (BAIXO/MEDIO/ALTO/CRITICO), <code>valor_risco</code>, <code>situacao_atual</code> (opcionais). Datas em AAAA-MM-DD ou DD/MM/AAAA.
+      Isso não substitui o cadastro manual um a um — o botão "+" continua funcionando normalmente pra cadastrar ou completar processos individualmente.
+    </p>
+    <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:16px;">
+      <input type="file" id="csv-input" accept=".csv" onchange="lidarComArquivoCsv(event)">
+      <button class="btn-ghost" onclick="baixarModeloCsv()">Baixar modelo CSV</button>
+    </div>
+    <div id="csv-resumo" style="display:none; margin-bottom:14px;">
+      <div class="cards-row" style="margin-bottom:14px;">
+        <div class="kpi-card"><div><div class="label">Prontos para importar</div><div class="value" id="csv-count-validos">0</div></div></div>
+        <div class="kpi-card"><div><div class="label">Já existentes (ignorados)</div><div class="value" id="csv-count-existentes">0</div></div></div>
+        <div class="kpi-card"><div><div class="label">Duplicados no arquivo</div><div class="value" id="csv-count-dup-arquivo">0</div></div></div>
+        <div class="kpi-card alert"><div><div class="label">Com erro</div><div class="value" id="csv-count-invalidos">0</div></div></div>
+      </div>
+      <div class="table-wrap" style="max-height:280px; overflow-y:auto;">
+        <table class="table-compact">
+          <thead><tr><th>Linha</th><th>Nº processo</th><th>Cliente</th><th>Banco</th><th>Status</th></tr></thead>
+          <tbody id="csv-preview-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="form-actions">
+      <button class="btn-secondary" onclick="fecharImportarCsv()">Cancelar</button>
+      <button class="btn-primary" style="width:auto" id="csv-btn-confirmar" onclick="confirmarImportacaoCsv()" disabled>Importar processos válidos</button>
     </div>
   </div>
 </div>
@@ -953,7 +1002,7 @@ function emptyState(title, sub){
 }
 const PIE_PALETTE = ['#17AC8E','#3FD6B4','#0F7C64','#F3B94E','#F0935B','#7F9CF5','#D4537E','#9C9A94'];
 
-function renderPieChart(container, items, formatValue, totalLabel){
+function renderPieChart(container, items, formatValue, totalLabel, onItemClick){
   if(!items.length){ container.innerHTML = emptyState('Sem dados ainda', 'Cadastre um processo para ver este gráfico.'); return; }
   const total = items.reduce((s,i)=>s+i.n,0);
   let acc = 0;
@@ -964,10 +1013,11 @@ function renderPieChart(container, items, formatValue, totalLabel){
     const end = total ? acc/total*100 : 0;
     return `${color} ${start}% ${end}%`;
   }).join(', ');
+  const clicavel = typeof onItemClick === 'function';
   const legend = items.map((i,idx)=>{
     const color = i.color || PIE_PALETTE[idx % PIE_PALETTE.length];
     const pct = total ? Math.round(i.n/total*100) : 0;
-    return `<div class="pie-legend-item"><div class="pie-dot" style="background:${color};"></div><div class="pie-legend-label">${i.label}</div><div class="pie-legend-value">${formatValue ? formatValue(i) : i.n} · ${pct}%</div></div>`;
+    return `<div class="pie-legend-item${clicavel ? ' pie-legend-item--clicavel' : ''}" data-idx="${idx}" ${clicavel ? 'title="Clique para detalhar"' : ''}><div class="pie-dot" style="background:${color};"></div><div class="pie-legend-label">${i.label}</div><div class="pie-legend-value">${formatValue ? formatValue(i) : i.n} · ${pct}%</div></div>`;
   }).join('');
   container.innerHTML = `
     <div class="pie-container">
@@ -976,6 +1026,14 @@ function renderPieChart(container, items, formatValue, totalLabel){
       </div>
       <div class="pie-legend">${legend}</div>
     </div>`;
+  // addEventListener com closure (em vez de onclick inline chamando uma função
+  // global) — assim cada gráfico mantém sua própria referência a "items" e ao
+  // callback certo, mesmo com vários gráficos clicáveis na mesma tela.
+  if(clicavel){
+    container.querySelectorAll('.pie-legend-item').forEach(el=>{
+      el.addEventListener('click', ()=> onItemClick(items[parseInt(el.dataset.idx,10)]));
+    });
+  }
 }
 
 async function carregarDashboard(){
@@ -1005,19 +1063,22 @@ async function carregarDashboard(){
   ativos.forEach(p=>{ const b=p.banco||'(sem banco)'; porBanco[b]=porBanco[b]||{n:0,v:0}; porBanco[b].n++; porBanco[b].v+=Number(p.valor_risco)||0; });
   bancoCache = Object.entries(porBanco).sort((a,b)=>b[1].n-a[1].n).map(([b,v])=>({label:b, n:v.n, v:v.v}));
   renderPieChart(document.getElementById('chart-por-banco'), bancoCache.slice(0,6),
-    i=>`${i.n} · ${fmtMoney(i.v)}`, 'processos');
+    i=>`${i.n} · ${fmtMoney(i.v)}`, 'processos',
+    (item)=> abrirDrilldown('banco', item.label, 'motivo', 'Motivo', ativos));
 
   const RISK_COLOR = { CRITICO:'#FF6B6B', ALTO:'#F0935B', MEDIO:'#F3B94E', BAIXO:'#3FDC9E' };
   const porRisco = {};
   ativos.forEach(p=>{ porRisco[p.classificacao_risco]=porRisco[p.classificacao_risco]||{n:0,v:0}; porRisco[p.classificacao_risco].n++; porRisco[p.classificacao_risco].v+=Number(p.valor_risco)||0; });
   renderPieChart(document.getElementById('chart-por-risco'),
     ['CRITICO','ALTO','MEDIO','BAIXO'].filter(r=>porRisco[r]).map(r=>({label:r, n:porRisco[r].n, v:porRisco[r].v, color:RISK_COLOR[r]})),
-    i=>`${i.n} · ${fmtMoney(i.v)}`, 'processos');
+    i=>`${i.n} · ${fmtMoney(i.v)}`, 'processos',
+    (item)=> abrirDrilldown('classificacao_risco', item.label, 'banco', 'Banco', ativos));
 
   const porMotivo = {};
   processosCache.forEach(p=>{ porMotivo[p.motivo]=(porMotivo[p.motivo]||0)+1; });
   renderPieChart(document.getElementById('chart-por-motivo'),
-    Object.entries(porMotivo).sort((a,b)=>b[1]-a[1]).map(([m,n])=>({label:m, n})), null, 'processos');
+    Object.entries(porMotivo).sort((a,b)=>b[1]-a[1]).map(([m,n])=>({label:m, n})), null, 'processos',
+    (item)=> abrirDrilldown('motivo', item.label, 'banco', 'Banco', processosCache));
 
   // popula selects de filtro de motivo/risco
   document.getElementById('f-motivo').innerHTML = '<option value="">Todos os motivos</option>' + [...new Set(processosCache.map(p=>p.motivo).filter(Boolean))].sort().map(m=>`<option value="${m}">${m}</option>`).join('');
@@ -1170,6 +1231,31 @@ function toggleGraficoCompletoCohort(rowEl, mesOperacao){
     </div>`;
   renderPieChart(document.getElementById(`full-mo-${mesOperacao}`), porMotivo, null, 'processos');
   renderPieChart(document.getElementById(`full-op-${mesOperacao}`), porOperacao, null, 'processos');
+}
+
+// Drill-down genérico: dado um valor clicado num gráfico (ex: motivo =
+// "SUPERENDIVIDAMENTO"), mostra o detalhamento cruzando com outro campo
+// (ex: quantos processos e qual valor em risco, por banco).
+function abrirDrilldown(campoFiltro, valorFiltro, campoAgrupar, labelAgrupar, base){
+  const filtrados = (base||processosCache).filter(p => (p[campoFiltro] || '(sem informação)') === valorFiltro);
+  const grupos = {};
+  filtrados.forEach(p=>{
+    const chave = p[campoAgrupar] || '(sem informação)';
+    grupos[chave] = grupos[chave] || { n:0, v:0 };
+    grupos[chave].n++;
+    grupos[chave].v += Number(p.valor_risco)||0;
+  });
+  const linhas = Object.entries(grupos).sort((a,b)=>b[1].n-a[1].n).map(([k,val])=>({label:k, n:val.n, v:val.v}));
+  const total = filtrados.length;
+
+  document.getElementById('drill-titulo').textContent = `${valorFiltro} — detalhamento por ${labelAgrupar.toLowerCase()}`;
+  document.getElementById('drill-subtitulo').textContent = `${total} processo${total===1?'':'s'} no total`;
+  document.querySelector('#tbl-drilldown thead').innerHTML = `<tr><th>${labelAgrupar}</th><th>Processos</th><th>Valor em risco</th><th>%</th></tr>`;
+  document.querySelector('#tbl-drilldown tbody').innerHTML = linhas.length ? linhas.map(l=>{
+    const pct = total ? Math.round(l.n/total*100) : 0;
+    return `<tr><td>${l.label}</td><td>${l.n}</td><td>${fmtMoney(l.v)}</td><td>${pct}%</td></tr>`;
+  }).join('') : `<tr><td colspan="4">${emptyState('Sem dados','')}</td></tr>`;
+  openModal('modal-drilldown');
 }
 
 function abrirDetalheBanco(){
@@ -1354,6 +1440,159 @@ async function salvarNovoProcesso(){
   await carregarProcessos(); await carregarDashboard();
 }
 
+// ---------------- IMPORTAÇÃO EM LOTE (CSV) ----------------
+// Isso não substitui o cadastro manual (salvarNovoProcesso) — é um caminho
+// adicional só para cadastrar vários processos de uma vez.
+let csvLinhasValidas = [];
+
+function abrirImportarCsv(){
+  csvLinhasValidas = [];
+  document.getElementById('csv-input').value = '';
+  document.getElementById('csv-resumo').style.display = 'none';
+  document.getElementById('csv-btn-confirmar').disabled = true;
+  openModal('modal-importar-csv');
+}
+function fecharImportarCsv(){ closeModal('modal-importar-csv'); }
+
+function baixarModeloCsv(){
+  const cabecalho = 'numero_processo,tribunal,nome_cliente,cpf,ade,banco,convenio,tipo_operacao,motivo,valor_operacao,data_operacao,data_ajuizamento,classificacao_risco,valor_risco,situacao_atual';
+  const exemplo = '0000000-00.0000.8.00.0000,TJBA,NOME DO CLIENTE,00000000000,12345,FACTA,GOV BA,CRÉDITO NOVO,SUPERENDIVIDAMENTO,5000.00,2026-01-15,2026-03-01,MEDIO,5000.00,Aguardando citação';
+  const blob = new Blob([cabecalho+'\n'+exemplo+'\n'], {type:'text/csv;charset=utf-8;'});
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = 'modelo_importacao_processos.csv';
+  link.click();
+}
+
+function normalizarDataCsv(valor){
+  if(!valor) return null;
+  const v = valor.trim();
+  if(/^\d{4}-\d{2}-\d{2}$/.test(v)) return v;
+  const m = v.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if(m) return `${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`;
+  return null;
+}
+
+function normalizarRiscoCsv(valor){
+  const v = (valor||'').trim().toUpperCase()
+    .replace(/É|Ê/g,'E').replace(/Á|Â|Ã/g,'A').replace(/Í/g,'I').replace(/Ó|Ô|Õ/g,'O').replace(/Ú/g,'U');
+  return ['BAIXO','MEDIO','ALTO','CRITICO'].includes(v) ? v : 'BAIXO';
+}
+
+function lidarComArquivoCsv(event){
+  const arquivo = event.target.files[0];
+  if(!arquivo) return;
+  Papa.parse(arquivo, {
+    header: true,
+    skipEmptyLines: true,
+    encoding: 'UTF-8',
+    complete: (resultado) => processarLinhasCsv(resultado.data)
+  });
+}
+
+function processarLinhasCsv(linhas){
+  const existentes = new Set(processosCache.map(p=>p.numero_processo));
+  const vistosNoArquivo = new Set();
+  csvLinhasValidas = [];
+  const linhasPreview = [];
+  let countExistentes = 0, countDupArquivo = 0, countInvalidos = 0;
+
+  linhas.forEach((linha, idx)=>{
+    const numero = (linha.numero_processo||'').trim();
+    const nome = (linha.nome_cliente||'').trim();
+    const banco = (linha.banco||'').trim().toUpperCase();
+    const numLinha = idx + 2; // +2: cabeçalho é a linha 1
+
+    let status = null;
+    if(!numero || !nome || !banco){
+      status = 'Erro: falta número, cliente ou banco'; countInvalidos++;
+    } else if(vistosNoArquivo.has(numero)){
+      status = 'Duplicado no arquivo'; countDupArquivo++;
+    } else if(existentes.has(numero)){
+      status = 'Já existe no sistema'; countExistentes++;
+    }
+
+    if(!status){
+      vistosNoArquivo.add(numero);
+      const payload = {
+        numero_processo: numero,
+        tribunal: (linha.tribunal||'').trim() || null,
+        nome_cliente: nome,
+        cpf: (linha.cpf||'').trim() || null,
+        ade: (linha.ade||'').trim() || null,
+        banco: banco,
+        convenio: (linha.convenio||'').trim().toUpperCase() || null,
+        tipo_operacao: (linha.tipo_operacao||'').trim().toUpperCase() || null,
+        motivo: (linha.motivo||'').trim().toUpperCase() || 'OUTRO',
+        valor_operacao: parseFloat((linha.valor_operacao||'').replace(',','.')) || null,
+        data_operacao: normalizarDataCsv(linha.data_operacao),
+        data_ajuizamento: normalizarDataCsv(linha.data_ajuizamento),
+        classificacao_risco: normalizarRiscoCsv(linha.classificacao_risco),
+        valor_risco: parseFloat((linha.valor_risco||'').replace(',','.')) || null,
+        situacao_atual: (linha.situacao_atual||'').trim() || undefined,
+        responsavel_cadastro: currentUser.id,
+      };
+      csvLinhasValidas.push(payload);
+      status = 'Pronto para importar';
+    }
+
+    linhasPreview.push({ numLinha, numero, nome, banco, status });
+  });
+
+  document.getElementById('csv-count-validos').textContent = csvLinhasValidas.length;
+  document.getElementById('csv-count-existentes').textContent = countExistentes;
+  document.getElementById('csv-count-dup-arquivo').textContent = countDupArquivo;
+  document.getElementById('csv-count-invalidos').textContent = countInvalidos;
+  document.getElementById('csv-resumo').style.display = 'block';
+  document.getElementById('csv-btn-confirmar').disabled = csvLinhasValidas.length === 0;
+
+  document.getElementById('csv-preview-tbody').innerHTML = linhasPreview.map(l=>{
+    const cor = l.status==='Pronto para importar' ? 'var(--sucesso)' : (l.status.startsWith('Erro') ? 'var(--erro)' : 'var(--textSecondary)');
+    return `<tr><td>${l.numLinha}</td><td>${l.numero||'—'}</td><td>${l.nome||'—'}</td><td>${l.banco||'—'}</td><td style="color:${cor};">${l.status}</td></tr>`;
+  }).join('');
+}
+
+async function confirmarImportacaoCsv(){
+  if(!csvLinhasValidas.length) return;
+  document.getElementById('csv-btn-confirmar').disabled = true;
+  document.getElementById('csv-btn-confirmar').textContent = 'Importando...';
+
+  // Registra em opcoes_dominio qualquer valor novo de banco/convênio/operação/
+  // motivo que tenha vindo no CSV e ainda não existisse na lista — mesmo
+  // comportamento do "+ Adicionar novo..." do cadastro manual.
+  const novosPorCategoria = { BANCO: new Set(), CONVENIO: new Set(), OPERACAO: new Set(), MOTIVO: new Set() };
+  csvLinhasValidas.forEach(p=>{
+    if(p.banco && !opcoesCache.BANCO.includes(p.banco)) novosPorCategoria.BANCO.add(p.banco);
+    if(p.convenio && !opcoesCache.CONVENIO.includes(p.convenio)) novosPorCategoria.CONVENIO.add(p.convenio);
+    if(p.tipo_operacao && !opcoesCache.OPERACAO.includes(p.tipo_operacao)) novosPorCategoria.OPERACAO.add(p.tipo_operacao);
+    if(p.motivo && !opcoesCache.MOTIVO.includes(p.motivo)) novosPorCategoria.MOTIVO.add(p.motivo);
+  });
+  for(const categoria of Object.keys(novosPorCategoria)){
+    for(const valor of novosPorCategoria[categoria]){
+      const { error } = await sb.from('opcoes_dominio').insert({ categoria, valor });
+      if(!error || error.code === '23505') opcoesCache[categoria].push(valor);
+    }
+  }
+
+  // Insere em lotes de 200 pra não estourar limite de payload de uma vez só.
+  const TAMANHO_LOTE = 200;
+  let inseridos = 0;
+  const erros = [];
+  for(let i=0; i<csvLinhasValidas.length; i+=TAMANHO_LOTE){
+    const lote = csvLinhasValidas.slice(i, i+TAMANHO_LOTE);
+    const { error, count } = await sb.from('processos_judiciais').insert(lote, { count:'exact' });
+    if(error) erros.push(error.message); else inseridos += lote.length;
+  }
+
+  toast(erros.length
+    ? `${inseridos} processo(s) importado(s). Ocorreram erros: ${erros.join(' | ')}`
+    : `${inseridos} processo(s) importado(s) com sucesso.`);
+
+  document.getElementById('csv-btn-confirmar').textContent = 'Importar processos válidos';
+  fecharImportarCsv();
+  await carregarProcessos(); await carregarDashboard();
+}
+
 // ---------------- DETALHE DO PROCESSO ----------------
 function fc(label, value){
   return `<div class="field-card"><div class="fc-label">${label}</div><div class="fc-value">${value}</div></div>`;
@@ -1383,6 +1622,14 @@ function renderDetView(p){
       ${fc('Valor da operação', fmtMoney(p.valor_operacao))}
       ${fc('Data da operação', fmtDate(p.data_operacao))}
       ${fc('Data de ajuizamento', fmtDate(p.data_ajuizamento))}
+      ${fc('Classe processual', p.classe_processual||'—')}
+      ${fc('Assunto (DataJud)', p.assunto_principal||'—')}
+      ${fc('Órgão julgador', p.orgao_julgador||'—')}
+      ${fc('Grau/instância', p.grau_instancia||'—')}
+      ${fc('Nível de sigilo', p.nivel_sigilo && p.nivel_sigilo!=='PUBLICO' ? `<span class="badge badge-ALTO">${p.nivel_sigilo}</span>` : (p.nivel_sigilo||'—'))}
+      ${fc('Valor da causa', p.valor_causa!=null ? fmtMoney(p.valor_causa) : '—')}
+      ${fc('Justiça gratuita', p.justica_gratuita==null ? '—' : (p.justica_gratuita ? 'Sim' : 'Não'))}
+      ${fc('Liminar', p.liminar==null ? '—' : (p.liminar ? 'Sim' : 'Não'))}
       ${fc('Valor em risco', fmtMoney(p.valor_risco))}
       ${fc('Classificação de risco', `<span class="badge badge-${p.classificacao_risco}">${p.classificacao_risco}</span>`)}
       ${fc('Resultado', `<span class="badge badge-${p.resultado}">${RESULTADO_LABEL[p.resultado]||p.resultado}</span>`)}
