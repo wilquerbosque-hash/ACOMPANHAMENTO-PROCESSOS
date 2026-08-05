@@ -1,3 +1,4 @@
+// teste de integração com github
 // Edge Function: sync-datajud
 // É chamada pelo PRÓPRIO index.html quando alguém loga no sistema (não roda
 // sozinha em segundo plano por conta própria, não depende de pg_cron). Ao ser
