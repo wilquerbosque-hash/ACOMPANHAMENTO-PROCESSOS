@@ -129,6 +129,10 @@
   .badge-EM_ANDAMENTO{ background:#232320; color:var(--textSecondary); }
   .badge-ATIVO{ background:var(--sucessoBg); color:var(--sucesso); }
   .badge-ARQUIVADO{ background:#232320; color:var(--textSecondary); }
+  .badge-AGUARDANDO_CONTESTACAO{ background:#232320; color:var(--textSecondary); }
+  .badge-SEM_EVIDENCIA{ background:var(--erroBg); color:var(--erro); }
+  .badge-COM_EVIDENCIA_NAO_UTILIZADA{ background:var(--alertaBg); color:var(--alerta); }
+  .badge-COM_EVIDENCIA_UTILIZADA{ background:var(--sucessoBg); color:var(--sucesso); }
   .banner-aviso{ background:var(--alertaBg); border:1px solid var(--alerta); color:var(--alerta); padding:12px 16px; border-radius:9px; font-size:13px; margin-bottom:18px; display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; }
 
   .filters{ display:flex; gap:10px; flex-wrap:wrap; margin-bottom:16px; }
@@ -551,6 +555,23 @@
     <div class="form-row single">
       <div><label>Situação atual</label><input id="np-situacao" placeholder="Ex: Aguardando citação, Aguardando sentença..."></div>
     </div>
+    <div class="section-label"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3 4 6v6c0 5 4 8 8 9 4-1 8-4 8-9V6z"/><path d="m9 12 2 2 4-4"/></svg>Evidências enviadas ao banco</div>
+    <div class="form-row">
+      <div><label>Enviamos evidência de "boa venda"?</label>
+        <select id="np-evidencias-possui" onchange="atualizarCampoEvidenciasUtilizada('np')">
+          <option value="AGUARDANDO_CONTESTACAO">Aguardando contestação (ainda não se sabe)</option>
+          <option value="NAO">Não</option>
+          <option value="SIM">Sim</option>
+        </select>
+      </div>
+      <div id="np-evidencias-utilizada-wrap" style="display:none;">
+        <label>O banco está utilizando no processo?</label>
+        <select id="np-evidencias-utilizada">
+          <option value="NAO">Não</option>
+          <option value="SIM">Sim</option>
+        </select>
+      </div>
+    </div>
     <div class="form-actions">
       <button class="btn-secondary" onclick="closeModal('modal-novo-processo')">Cancelar</button>
       <button class="btn-primary" style="width:auto" onclick="salvarNovoProcesso()">Salvar processo</button>
@@ -563,7 +584,7 @@
   <div class="modal wide">
     <div class="modal-head"><h3>Importar processos via CSV</h3><button onclick="fecharImportarCsv()">✕</button></div>
     <p class="field-note">
-      Colunas aceitas (cabeçalho na primeira linha, nomes exatamente assim): <code>numero_processo</code> e <code>nome_cliente</code> e <code>banco</code> (obrigatórias); <code>tribunal</code>, <code>ade</code>, <code>convenio</code>, <code>tipo_operacao</code>, <code>motivo</code>, <code>valor_operacao</code>, <code>data_operacao</code>, <code>data_ajuizamento</code>, <code>classificacao_risco</code> (BAIXO/MEDIO/ALTO/CRITICO), <code>valor_risco</code>, <code>situacao_atual</code> (opcionais). Datas em AAAA-MM-DD ou DD/MM/AAAA.
+      Colunas aceitas (cabeçalho na primeira linha, nomes exatamente assim): <code>numero_processo</code> e <code>nome_cliente</code> e <code>banco</code> (obrigatórias); <code>tribunal</code>, <code>ade</code>, <code>convenio</code>, <code>tipo_operacao</code>, <code>motivo</code>, <code>valor_operacao</code>, <code>data_operacao</code>, <code>data_ajuizamento</code>, <code>classificacao_risco</code> (BAIXO/MEDIO/ALTO/CRITICO), <code>valor_risco</code>, <code>situacao_atual</code>, <code>situacao_evidencias</code> (AGUARDANDO_CONTESTACAO/SEM_EVIDENCIA/COM_EVIDENCIA_UTILIZADA/COM_EVIDENCIA_NAO_UTILIZADA) (opcionais). Datas em AAAA-MM-DD ou DD/MM/AAAA.
       Isso não substitui o cadastro manual um a um — o botão "+" continua funcionando normalmente pra cadastrar ou completar processos individualmente.
     </p>
     <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:16px;">
@@ -638,6 +659,23 @@
             <div><label>Valor em risco (R$)</label><input id="det-valor-risco" type="number" step="0.01"></div>
           </div>
           <div class="form-row single"><div><label>Situação atual</label><input id="det-situacao"></div></div>
+          <div class="section-label"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3 4 6v6c0 5 4 8 8 9 4-1 8-4 8-9V6z"/><path d="m9 12 2 2 4-4"/></svg>Evidências enviadas ao banco</div>
+          <div class="form-row">
+            <div><label>Enviamos evidência de "boa venda"?</label>
+              <select id="det-evidencias-possui" onchange="atualizarCampoEvidenciasUtilizada('det')">
+                <option value="AGUARDANDO_CONTESTACAO">Aguardando contestação (ainda não se sabe)</option>
+                <option value="NAO">Não</option>
+                <option value="SIM">Sim</option>
+              </select>
+            </div>
+            <div id="det-evidencias-utilizada-wrap" style="display:none;">
+              <label>O banco está utilizando no processo?</label>
+              <select id="det-evidencias-utilizada">
+                <option value="NAO">Não</option>
+                <option value="SIM">Sim</option>
+              </select>
+            </div>
+          </div>
           <div class="form-row single">
             <div><label>Resumo da situação (linguagem simples, sem jargão jurídico)</label>
               <textarea id="det-resumo-simples" rows="3" placeholder="Ex: O processo está aguardando decisão do juiz sobre um pedido da outra parte; ainda sem data prevista para julgamento."></textarea>
@@ -993,6 +1031,7 @@ const ICON_FOLDER = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none"
 const ICON_COIN = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v10M9 9.5c0-1.4 1.3-2.5 3-2.5s3 1.1 3 2.5-1.3 2-3 2.5-3 1.1-3 2.5 1.3 2.5 3 2.5 3-1.1 3-2.5"/></svg>';
 const ICON_ALERT = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>';
 const ICON_CLOCK = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>';
+const ICON_SHIELD = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3 4 6v6c0 5 4 8 8 9 4-1 8-4 8-9V6z"/><path d="m9 12 2 2 4-4"/></svg>';
 const ICON_EMPTY = '<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18"/><path d="M8 13h8M8 16h5"/></svg>';
 
 function emptyState(title, sub){
@@ -1039,8 +1078,18 @@ async function carregarDashboard(){
   const total = ativos.length;
   const valorTotal = ativos.reduce((s,p)=>s+(Number(p.valor_risco)||0),0);
   const criticos = ativos.filter(p=>['ALTO','CRITICO'].includes(p.classificacao_risco)).length;
-  const { count: tarefasAtrasadas } = await sb.from('tarefas_acompanhamento').select('id',{count:'exact', head:true}).eq('status','ATRASADA');
   carregarAtualizacoesRecentes();
+
+  // % de processos com evidências: só conta quem já tem marcação definida
+  // (utilizada ou não utilizada) — "Aguardando contestação" fica de fora da
+  // conta, porque ainda não se sabe.
+  const comEvidenciaUtilizada = ativos.filter(p=>p.situacao_evidencias==='COM_EVIDENCIA_UTILIZADA').length;
+  const comEvidenciaNaoUtilizada = ativos.filter(p=>p.situacao_evidencias==='COM_EVIDENCIA_NAO_UTILIZADA').length;
+  const semEvidencia = ativos.filter(p=>p.situacao_evidencias==='SEM_EVIDENCIA').length;
+  const totalComMarcacaoDefinida = comEvidenciaUtilizada + comEvidenciaNaoUtilizada + semEvidencia;
+  const pctComEvidencia = totalComMarcacaoDefinida
+    ? Math.round((comEvidenciaUtilizada + comEvidenciaNaoUtilizada) / totalComMarcacaoDefinida * 100)
+    : null;
 
   // % de êxito considera todos os processos concluídos, mesmo os já arquivados
   const ganhos = processosCache.filter(p=>p.resultado==='GANHO').length;
@@ -1053,7 +1102,7 @@ async function carregarDashboard(){
     <div class="kpi-card" title="Conta apenas processos com status Ativo"><div><div class="label">Processos ativos</div><div class="value">${total}</div></div><div class="icon-box">${ICON_FOLDER}</div></div>
     <div class="kpi-card" title="Soma o valor em risco apenas dos processos com status Ativo"><div><div class="label">Valor em risco</div><div class="value">${fmtMoney(valorTotal)}</div></div><div class="icon-box">${ICON_COIN}</div></div>
     <div class="kpi-card ${criticos>0?'alert':''}" title="Processos ativos com risco Alto ou Crítico"><div><div class="label">Risco alto/crítico</div><div class="value">${criticos}</div></div><div class="icon-box">${ICON_ALERT}</div></div>
-    <div class="kpi-card ${tarefasAtrasadas>0?'alert':''}"><div><div class="label">Acompanhamentos atrasados</div><div class="value">${tarefasAtrasadas||0}</div></div><div class="icon-box">${ICON_CLOCK}</div></div>
+    <div class="kpi-card" title="${totalComMarcacaoDefinida} processo(s) ativo(s) com marcação definida (com ou sem evidência) de ${total} no total. Processos 'Aguardando contestação' não entram nessa conta."><div><div class="label">Processos com evidências</div><div class="value">${pctComEvidencia===null?'—':pctComEvidencia+'%'}</div></div><div class="icon-box">${ICON_SHIELD}</div></div>
     <div class="kpi-card" title="${concluidos} processos concluídos (ganho, perdido ou parcial), inclusive arquivados"><div><div class="label">% de êxito</div><div class="value">${exitoPct===null?'—':exitoPct+'%'}</div></div><div class="icon-box">${ICON_CLOCK}</div></div>
   `;
 
@@ -1409,6 +1458,42 @@ function openNovoProcesso(){
   openModal('modal-novo-processo');
 }
 
+// ---------------- EVIDÊNCIAS ENVIADAS AO BANCO ----------------
+// A tela usa duas perguntas (possui evidência? / o banco utiliza?), mas isso
+// vira um único valor salvo no banco (situacao_evidencias), com 4 estados:
+// AGUARDANDO_CONTESTACAO, SEM_EVIDENCIA, COM_EVIDENCIA_UTILIZADA, COM_EVIDENCIA_NAO_UTILIZADA.
+function atualizarCampoEvidenciasUtilizada(prefixo){
+  const possui = document.getElementById(`${prefixo}-evidencias-possui`).value;
+  document.getElementById(`${prefixo}-evidencias-utilizada-wrap`).style.display = possui === 'SIM' ? 'block' : 'none';
+}
+
+function calcularSituacaoEvidencias(prefixo){
+  const possui = document.getElementById(`${prefixo}-evidencias-possui`).value;
+  if(possui === 'AGUARDANDO_CONTESTACAO') return 'AGUARDANDO_CONTESTACAO';
+  if(possui === 'NAO') return 'SEM_EVIDENCIA';
+  const utilizada = document.getElementById(`${prefixo}-evidencias-utilizada`).value;
+  return utilizada === 'SIM' ? 'COM_EVIDENCIA_UTILIZADA' : 'COM_EVIDENCIA_NAO_UTILIZADA';
+}
+
+// Faz o caminho inverso: a partir do valor salvo, ajusta os dois selects na
+// tela (usado ao abrir a edição de um processo já cadastrado).
+function preencherCampoEvidencias(prefixo, valor){
+  let possui = 'AGUARDANDO_CONTESTACAO', utilizada = 'NAO';
+  if(valor === 'SEM_EVIDENCIA'){ possui = 'NAO'; }
+  else if(valor === 'COM_EVIDENCIA_UTILIZADA'){ possui = 'SIM'; utilizada = 'SIM'; }
+  else if(valor === 'COM_EVIDENCIA_NAO_UTILIZADA'){ possui = 'SIM'; utilizada = 'NAO'; }
+  document.getElementById(`${prefixo}-evidencias-possui`).value = possui;
+  document.getElementById(`${prefixo}-evidencias-utilizada`).value = utilizada;
+  atualizarCampoEvidenciasUtilizada(prefixo);
+}
+
+const LABEL_EVIDENCIAS = {
+  AGUARDANDO_CONTESTACAO: 'Aguardando contestação',
+  SEM_EVIDENCIA: 'Sem evidência',
+  COM_EVIDENCIA_NAO_UTILIZADA: 'Com evidência — não utilizada pelo banco',
+  COM_EVIDENCIA_UTILIZADA: 'Com evidência — utilizada pelo banco',
+};
+
 async function salvarNovoProcesso(){
   const payload = {
     numero_processo: document.getElementById('np-numero').value.trim(),
@@ -1425,6 +1510,7 @@ async function salvarNovoProcesso(){
     classificacao_risco: document.getElementById('np-risco').value,
     valor_risco: document.getElementById('np-valor-risco').value || null,
     situacao_atual: document.getElementById('np-situacao').value.trim() || 'AGUARDANDO CITAÇÃO/CIÊNCIA',
+    situacao_evidencias: calcularSituacaoEvidencias('np'),
     responsavel_cadastro: currentUser.id
   };
   if(!payload.numero_processo || !payload.nome_cliente || !payload.banco){
@@ -1516,6 +1602,15 @@ function normalizarRiscoCsv(valor){
   return ['BAIXO','MEDIO','ALTO','CRITICO'].includes(v) ? v : 'BAIXO';
 }
 
+// Aceita os valores exatos do campo (AGUARDANDO_CONTESTACAO, SEM_EVIDENCIA,
+// COM_EVIDENCIA_UTILIZADA, COM_EVIDENCIA_NAO_UTILIZADA); qualquer outra coisa
+// (ou coluna ausente/vazia) cai no padrão "aguardando contestação".
+function normalizarEvidenciasCsv(valor){
+  const v = (valor||'').trim().toUpperCase();
+  const validos = ['AGUARDANDO_CONTESTACAO','SEM_EVIDENCIA','COM_EVIDENCIA_UTILIZADA','COM_EVIDENCIA_NAO_UTILIZADA'];
+  return validos.includes(v) ? v : 'AGUARDANDO_CONTESTACAO';
+}
+
 function lidarComArquivoCsv(event){
   const arquivo = event.target.files[0];
   if(!arquivo) return;
@@ -1566,6 +1661,7 @@ function processarLinhasCsv(linhas){
         classificacao_risco: normalizarRiscoCsv(linha.classificacao_risco),
         valor_risco: parseFloat((linha.valor_risco||'').replace(',','.')) || null,
         situacao_atual: (linha.situacao_atual||'').trim() || undefined,
+        situacao_evidencias: normalizarEvidenciasCsv(linha.situacao_evidencias),
         responsavel_cadastro: currentUser.id,
       };
       csvLinhasValidas.push(payload);
@@ -1666,6 +1762,7 @@ function renderDetView(p){
       ${fc('Justiça gratuita', p.justica_gratuita==null ? '—' : (p.justica_gratuita ? 'Sim' : 'Não'))}
       ${fc('Liminar', p.liminar==null ? '—' : (p.liminar ? 'Sim' : 'Não'))}
       ${fc('Valor em risco', fmtMoney(p.valor_risco))}
+      ${fc('Evidências enviadas ao banco', `<span class="badge badge-${p.situacao_evidencias||'AGUARDANDO_CONTESTACAO'}">${LABEL_EVIDENCIAS[p.situacao_evidencias]||LABEL_EVIDENCIAS.AGUARDANDO_CONTESTACAO}</span>`)}
       ${fc('Classificação de risco', `<span class="badge badge-${p.classificacao_risco}">${p.classificacao_risco}</span>`)}
       ${fc('Resultado', `<span class="badge badge-${p.resultado}">${RESULTADO_LABEL[p.resultado]||p.resultado}</span>`)}
       ${fc('Status do processo', `<span class="badge badge-${p.status_processo||'ATIVO'}">${(p.status_processo||'ATIVO')==='ATIVO'?'Ativo':'Arquivado/Extinto'}</span>`)}
@@ -1707,6 +1804,7 @@ function abrirEdicaoProcesso(){
   document.getElementById('det-risco').value = p.classificacao_risco;
   document.getElementById('det-valor-risco').value = p.valor_risco || '';
   document.getElementById('det-situacao').value = p.situacao_atual || '';
+  preencherCampoEvidencias('det', p.situacao_evidencias || 'AGUARDANDO_CONTESTACAO');
   document.getElementById('det-resumo-simples').value = p.resumo_simples || '';
   document.getElementById('det-resultado').value = p.resultado || 'EM_ANDAMENTO';
   document.getElementById('det-status-processo').value = p.status_processo || 'ATIVO';
@@ -1732,6 +1830,7 @@ async function salvarAtualizacaoProcesso(){
     classificacao_risco: document.getElementById('det-risco').value,
     valor_risco: document.getElementById('det-valor-risco').value || null,
     situacao_atual: document.getElementById('det-situacao').value.trim(),
+    situacao_evidencias: calcularSituacaoEvidencias('det'),
     resumo_simples: document.getElementById('det-resumo-simples').value.trim() || null,
     resultado: document.getElementById('det-resultado').value,
     status_processo: document.getElementById('det-status-processo').value
