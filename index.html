@@ -584,7 +584,7 @@
   <div class="modal wide">
     <div class="modal-head"><h3>Importar processos via CSV</h3><button onclick="fecharImportarCsv()">✕</button></div>
     <p class="field-note">
-      Colunas aceitas (cabeçalho na primeira linha, nomes exatamente assim): <code>numero_processo</code> e <code>nome_cliente</code> e <code>banco</code> (obrigatórias); <code>tribunal</code>, <code>ade</code>, <code>convenio</code>, <code>tipo_operacao</code>, <code>motivo</code>, <code>valor_operacao</code>, <code>data_operacao</code>, <code>data_ajuizamento</code>, <code>classificacao_risco</code> (BAIXO/MEDIO/ALTO/CRITICO), <code>valor_risco</code>, <code>situacao_atual</code>, <code>situacao_evidencias</code> (AGUARDANDO_CONTESTACAO/SEM_EVIDENCIA/COM_EVIDENCIA_UTILIZADA/COM_EVIDENCIA_NAO_UTILIZADA) (opcionais). Datas em AAAA-MM-DD ou DD/MM/AAAA.
+      Colunas reconhecidas — obrigatórias: número do processo, nome do cliente, banco. Opcionais: tribunal, ADE, convênio, tipo de operação, motivo, valor da operação, data da operação, data de ajuizamento, classificação de risco (Baixo/Médio/Alto/Crítico), valor em risco, situação atual, evidências (Com/Sem evidências). O nome exato da coluna pode variar (com ou sem acento, maiúscula/minúscula, "numero_processo" ou "número do processo") — o sistema tenta reconhecer as variações mais comuns. Se uma coluna não for reconhecida, baixe o modelo abaixo e compare os nomes. Datas em AAAA-MM-DD ou DD/MM/AAAA.
       Isso não substitui o cadastro manual um a um — o botão "+" continua funcionando normalmente pra cadastrar ou completar processos individualmente.
     </p>
     <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:16px;">
@@ -1602,13 +1602,54 @@ function normalizarRiscoCsv(valor){
   return ['BAIXO','MEDIO','ALTO','CRITICO'].includes(v) ? v : 'BAIXO';
 }
 
+// Remove acento, espaço, maiúscula/minúscula e qualquer caractere que não seja
+// letra ou número — usado tanto pra reconhecer cabeçalhos escritos de formas
+// diferentes ("Nº do processo", "numero_processo", "Número do Processo")
+// quanto pra reconhecer valores escritos em português natural.
+function normalizarTexto(s){
+  return (s||'').toString().normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]/g,'');
+}
+
 // Aceita os valores exatos do campo (AGUARDANDO_CONTESTACAO, SEM_EVIDENCIA,
-// COM_EVIDENCIA_UTILIZADA, COM_EVIDENCIA_NAO_UTILIZADA); qualquer outra coisa
-// (ou coluna ausente/vazia) cai no padrão "aguardando contestação".
+// COM_EVIDENCIA_UTILIZADA, COM_EVIDENCIA_NAO_UTILIZADA) e também frases comuns
+// em português. "Com evidência(s)" sozinho, sem dizer se o banco usa ou não,
+// fica como "aguardando contestação" — porque essa informação não está no
+// texto, e é melhor sinalizar "falta confirmar" do que arriscar uma cor errada.
 function normalizarEvidenciasCsv(valor){
-  const v = (valor||'').trim().toUpperCase();
-  const validos = ['AGUARDANDO_CONTESTACAO','SEM_EVIDENCIA','COM_EVIDENCIA_UTILIZADA','COM_EVIDENCIA_NAO_UTILIZADA'];
-  return validos.includes(v) ? v : 'AGUARDANDO_CONTESTACAO';
+  const v = normalizarTexto(valor);
+  if(v === 'semevidencia' || v === 'semevidencias' || v === 'nao') return 'SEM_EVIDENCIA';
+  if(v === 'comevidenciautilizada' || v === 'evidenciautilizada' || v === 'utilizada') return 'COM_EVIDENCIA_UTILIZADA';
+  if(v === 'comevidencianaoutilizada' || v === 'evidencianaoutilizada' || v === 'naoutilizada') return 'COM_EVIDENCIA_NAO_UTILIZADA';
+  return 'AGUARDANDO_CONTESTACAO';
+}
+
+// Mapa de variações comuns de nome de coluna (em português natural, com ou
+// sem acento/espaço/maiúscula) para o nome interno que o sistema usa. Se o
+// cabeçalho não for reconhecido, mantém como veio — só não vai bater com
+// nenhum campo, e a linha correspondente fica sem esse dado (sem quebrar o
+// resto da importação).
+const ALIASES_CABECALHO_CSV = {
+  numeroprocesso:'numero_processo', numerodoprocesso:'numero_processo', nprocesso:'numero_processo',
+  nprocesso2:'numero_processo', processo:'numero_processo', nodoprocesso:'numero_processo',
+  nomecliente:'nome_cliente', nomedocliente:'nome_cliente', cliente:'nome_cliente', nome:'nome_cliente',
+  banco:'banco',
+  tribunal:'tribunal',
+  ade:'ade',
+  convenio:'convenio',
+  operacao:'tipo_operacao', tipooperacao:'tipo_operacao', tipodeoperacao:'tipo_operacao',
+  motivo:'motivo',
+  valoroperacao:'valor_operacao', valordaoperacao:'valor_operacao',
+  dataoperacao:'data_operacao', datadaoperacao:'data_operacao',
+  dataajuizamento:'data_ajuizamento',
+  classificacaorisco:'classificacao_risco', classificacaoderisco:'classificacao_risco', risco:'classificacao_risco',
+  valorrisco:'valor_risco', valoremrisco:'valor_risco',
+  situacaoatual:'situacao_atual', situacao:'situacao_atual',
+  situacaoevidencias:'situacao_evidencias', evidencia:'situacao_evidencias', evidencias:'situacao_evidencias',
+};
+
+function mapearCabecalhoCsv(header){
+  const chave = normalizarTexto(header);
+  return ALIASES_CABECALHO_CSV[chave] || header;
 }
 
 function lidarComArquivoCsv(event){
@@ -1618,6 +1659,7 @@ function lidarComArquivoCsv(event){
     header: true,
     skipEmptyLines: true,
     encoding: 'UTF-8',
+    transformHeader: mapearCabecalhoCsv,
     complete: (resultado) => processarLinhasCsv(resultado.data)
   });
 }
