@@ -431,7 +431,7 @@
           <option value="ATIVO" selected>Só ativos</option>
           <option value="ARQUIVADO">Só arquivados</option>
         </select>
-        <input type="text" id="f-busca" placeholder="Buscar por nome, CPF ou nº processo">
+        <input type="text" id="f-busca" placeholder="Buscar por nome ou nº processo">
         <span style="font-size:12px; color:var(--textSecondary); align-self:center;">Ajuizado entre</span>
         <input type="date" id="f-ajuizamento-de" title="Ajuizado a partir de">
         <span style="font-size:12px; color:var(--textSecondary); align-self:center;">e</span>
@@ -510,9 +510,8 @@
       <div><label>Número do processo</label><input id="np-numero" placeholder="0000000-00.0000.0.00.0000"></div>
       <div><label>Tribunal</label><input id="np-tribunal" placeholder="TJBA, TJSP, TRF1..."></div>
     </div>
-    <div class="form-row">
+    <div class="form-row single">
       <div><label>Nome completo do cliente</label><input id="np-nome"></div>
-      <div><label>CPF</label><input id="np-cpf"></div>
     </div>
     <div class="form-row">
       <div><label>ADE do contrato</label><input id="np-ade"></div>
@@ -564,7 +563,7 @@
   <div class="modal wide">
     <div class="modal-head"><h3>Importar processos via CSV</h3><button onclick="fecharImportarCsv()">✕</button></div>
     <p class="field-note">
-      Colunas aceitas (cabeçalho na primeira linha, nomes exatamente assim): <code>numero_processo</code> e <code>nome_cliente</code> e <code>banco</code> (obrigatórias); <code>tribunal</code>, <code>cpf</code>, <code>ade</code>, <code>convenio</code>, <code>tipo_operacao</code>, <code>motivo</code>, <code>valor_operacao</code>, <code>data_operacao</code>, <code>data_ajuizamento</code>, <code>classificacao_risco</code> (BAIXO/MEDIO/ALTO/CRITICO), <code>valor_risco</code>, <code>situacao_atual</code> (opcionais). Datas em AAAA-MM-DD ou DD/MM/AAAA.
+      Colunas aceitas (cabeçalho na primeira linha, nomes exatamente assim): <code>numero_processo</code> e <code>nome_cliente</code> e <code>banco</code> (obrigatórias); <code>tribunal</code>, <code>ade</code>, <code>convenio</code>, <code>tipo_operacao</code>, <code>motivo</code>, <code>valor_operacao</code>, <code>data_operacao</code>, <code>data_ajuizamento</code>, <code>classificacao_risco</code> (BAIXO/MEDIO/ALTO/CRITICO), <code>valor_risco</code>, <code>situacao_atual</code> (opcionais). Datas em AAAA-MM-DD ou DD/MM/AAAA.
       Isso não substitui o cadastro manual um a um — o botão "+" continua funcionando normalmente pra cadastrar ou completar processos individualmente.
     </p>
     <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:16px;">
@@ -607,9 +606,8 @@
         </div>
 
         <div id="det-edit-form" style="display:none;">
-          <div class="form-row">
+          <div class="form-row single">
             <div><label>Nome completo do cliente</label><input id="det-nome"></div>
-            <div><label>CPF</label><input id="det-cpf"></div>
           </div>
           <div class="form-row">
             <div><label>ADE do contrato</label><input id="det-ade"></div>
@@ -946,7 +944,7 @@ function renderTabelaProcessos(){
     (!motivo || p.motivo===motivo) &&
     (!risco || p.classificacao_risco===risco) &&
     (!statusProc || (p.status_processo||'ATIVO')===statusProc) &&
-    (!busca || (p.nome_cliente||'').toLowerCase().includes(busca) || (p.cpf||'').includes(busca) || (p.numero_processo||'').includes(busca)) &&
+    (!busca || (p.nome_cliente||'').toLowerCase().includes(busca) || (p.numero_processo||'').includes(busca)) &&
     (!ajuizDe || (p.data_ajuizamento && p.data_ajuizamento >= ajuizDe)) &&
     (!ajuizAte || (p.data_ajuizamento && p.data_ajuizamento <= ajuizAte))
   ).sort((a,b)=>{
@@ -1416,7 +1414,6 @@ async function salvarNovoProcesso(){
     numero_processo: document.getElementById('np-numero').value.trim(),
     tribunal: document.getElementById('np-tribunal').value.trim(),
     nome_cliente: document.getElementById('np-nome').value.trim(),
-    cpf: document.getElementById('np-cpf').value.trim(),
     ade: document.getElementById('np-ade').value.trim(),
     banco: document.getElementById('np-banco').value,
     convenio: document.getElementById('np-convenio').value || null,
@@ -1455,8 +1452,8 @@ function abrirImportarCsv(){
 function fecharImportarCsv(){ closeModal('modal-importar-csv'); }
 
 function baixarModeloCsv(){
-  const cabecalho = 'numero_processo,tribunal,nome_cliente,cpf,ade,banco,convenio,tipo_operacao,motivo,valor_operacao,data_operacao,data_ajuizamento,classificacao_risco,valor_risco,situacao_atual';
-  const exemplo = '0000000-00.0000.8.00.0000,TJBA,NOME DO CLIENTE,00000000000,12345,FACTA,GOV BA,CRÉDITO NOVO,SUPERENDIVIDAMENTO,5000.00,2026-01-15,2026-03-01,MEDIO,5000.00,Aguardando citação';
+  const cabecalho = 'numero_processo,tribunal,nome_cliente,ade,banco,convenio,tipo_operacao,motivo,valor_operacao,data_operacao,data_ajuizamento,classificacao_risco,valor_risco,situacao_atual';
+  const exemplo = '0000000-00.0000.8.00.0000,TJBA,NOME DO CLIENTE,12345,FACTA,GOV BA,CRÉDITO NOVO,SUPERENDIVIDAMENTO,5000.00,2026-01-15,2026-03-01,MEDIO,5000.00,Aguardando citação';
   const blob = new Blob([cabecalho+'\n'+exemplo+'\n'], {type:'text/csv;charset=utf-8;'});
   const link = document.createElement('a');
   link.href = URL.createObjectURL(blob);
@@ -1518,7 +1515,6 @@ function processarLinhasCsv(linhas){
         numero_processo: numero,
         tribunal: (linha.tribunal||'').trim() || null,
         nome_cliente: nome,
-        cpf: (linha.cpf||'').trim() || null,
         ade: (linha.ade||'').trim() || null,
         banco: banco,
         convenio: (linha.convenio||'').trim().toUpperCase() || null,
@@ -1612,7 +1608,6 @@ function renderDetView(p){
     ${resumoHtml}
     <div class="fields-grid">
       ${fc('Cliente', p.nome_cliente)}
-      ${fc('CPF', p.cpf||'—')}
       ${fc('ADE', p.ade||'—')}
       ${fc('Tribunal', p.tribunal||'—')}
       ${fc('Banco', p.banco)}
@@ -1660,7 +1655,6 @@ async function abrirDetalhe(id){
 function abrirEdicaoProcesso(){
   const p = processosCache.find(x=>x.id===processoAtualId);
   document.getElementById('det-nome').value = p.nome_cliente || '';
-  document.getElementById('det-cpf').value = p.cpf || '';
   document.getElementById('det-ade').value = p.ade || '';
   document.getElementById('det-tribunal').value = p.tribunal || '';
   preencherSelectDominio('det-banco','BANCO', p.banco);
@@ -1686,7 +1680,6 @@ function cancelarEdicaoProcesso(){
 async function salvarAtualizacaoProcesso(){
   const payload = {
     nome_cliente: document.getElementById('det-nome').value.trim(),
-    cpf: document.getElementById('det-cpf').value.trim(),
     ade: document.getElementById('det-ade').value.trim(),
     tribunal: document.getElementById('det-tribunal').value.trim(),
     banco: document.getElementById('det-banco').value,
