@@ -154,6 +154,11 @@
   .timeline .tdesc{ font-size:13px; margin:2px 0; color:var(--textPrimary); }
   .timeline .tresp{ font-size:11px; color:var(--textMuted); }
   .badge-robo{ display:inline-block; margin-left:6px; padding:2px 8px; border-radius:999px; font-size:10px; font-weight:700; background:var(--sucessoBg); color:var(--konsiTeal); vertical-align:middle; }
+  .painel-resumo-simples{ background:#132420; border:1px solid var(--konsiTealDark); border-radius:10px; padding:14px 16px; margin-bottom:16px; }
+  .painel-resumo-simples--vazio{ background:#1c1c1a; border-color:#2a2a27; }
+  .painel-resumo-simples-label{ font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.03em; color:var(--konsiTeal); margin-bottom:6px; }
+  .painel-resumo-simples--vazio .painel-resumo-simples-label{ color:var(--textSecondary); }
+  .painel-resumo-simples-texto{ font-size:13px; line-height:1.6; color:var(--textPrimary); }
 
   .toast{
     position:fixed; bottom:24px; left:50%; transform:translateX(-50%); background:var(--konsiTeal); color:#08130F;
@@ -560,6 +565,11 @@
             <div><label>Valor em risco (R$)</label><input id="det-valor-risco" type="number" step="0.01"></div>
           </div>
           <div class="form-row single"><div><label>Situação atual</label><input id="det-situacao"></div></div>
+          <div class="form-row single">
+            <div><label>Resumo da situação (linguagem simples, sem jargão jurídico)</label>
+              <textarea id="det-resumo-simples" rows="3" placeholder="Ex: O processo está aguardando decisão do juiz sobre um pedido da outra parte; ainda sem data prevista para julgamento."></textarea>
+            </div>
+          </div>
           <div class="form-row single">
             <div><label>Resultado do processo</label>
               <select id="det-resultado">
@@ -1144,7 +1154,7 @@ async function carregarTarefas(){
   document.querySelector('#tbl-tarefas tbody').innerHTML = filtrado.length ? filtrado.map(t=>`
     <tr>
       <td>${fmtDate(t.data_prazo)}</td>
-      <td>${t.titulo}</td>
+      <td>${t.titulo} ${t.origem_tarefa==='ROBO_DATAJUD' ? '<span class="badge-robo">DataJud</span>' : ''}</td>
       <td>${t.numero_processo}</td>
       <td>${t.nome_cliente}</td>
       <td>${t.responsavel||'—'}</td>
@@ -1300,7 +1310,18 @@ function fc(label, value){
   return `<div class="field-card"><div class="fc-label">${label}</div><div class="fc-value">${value}</div></div>`;
 }
 function renderDetView(p){
+  const resumoHtml = p.resumo_simples
+    ? `<div class="painel-resumo-simples">
+         <div class="painel-resumo-simples-label">Resumo da situação${p.resumo_atualizado_em ? ` · atualizado em ${fmtDate(p.resumo_atualizado_em.slice(0,10))}` : ''}</div>
+         <div class="painel-resumo-simples-texto">${p.resumo_simples}</div>
+       </div>`
+    : `<div class="painel-resumo-simples painel-resumo-simples--vazio">
+         <div class="painel-resumo-simples-label">Resumo da situação</div>
+         <div class="painel-resumo-simples-texto">Ainda não há resumo. Se este processo tiver uma tarefa de inspeção pendente, abra os autos e preencha o resumo em "Editar" → "Resumo da situação".</div>
+       </div>`;
+
   document.getElementById('det-view').innerHTML = `
+    ${resumoHtml}
     <div class="fields-grid">
       ${fc('Cliente', p.nome_cliente)}
       ${fc('CPF', p.cpf||'—')}
@@ -1356,6 +1377,7 @@ function abrirEdicaoProcesso(){
   document.getElementById('det-risco').value = p.classificacao_risco;
   document.getElementById('det-valor-risco').value = p.valor_risco || '';
   document.getElementById('det-situacao').value = p.situacao_atual || '';
+  document.getElementById('det-resumo-simples').value = p.resumo_simples || '';
   document.getElementById('det-resultado').value = p.resultado || 'EM_ANDAMENTO';
   document.getElementById('det-status-processo').value = p.status_processo || 'ATIVO';
   document.getElementById('det-edit-form').style.display = 'block';
@@ -1381,6 +1403,7 @@ async function salvarAtualizacaoProcesso(){
     classificacao_risco: document.getElementById('det-risco').value,
     valor_risco: document.getElementById('det-valor-risco').value || null,
     situacao_atual: document.getElementById('det-situacao').value.trim(),
+    resumo_simples: document.getElementById('det-resumo-simples').value.trim() || null,
     resultado: document.getElementById('det-resultado').value,
     status_processo: document.getElementById('det-status-processo').value
   };
@@ -1407,10 +1430,12 @@ async function carregarTimeline(processoId){
     .eq('processo_id', processoId)
     .order('data_movimentacao',{ascending:false});
   if(error){ document.getElementById('det-timeline').innerHTML = ''; return; }
-  document.getElementById('det-timeline').innerHTML = data.length ? data.map(m=>`
-    <li><div class="tdate">${fmtDate(m.data_movimentacao)}</div><div class="tdesc">${m.descricao}</div>
-    <div class="tresp">${m.usuarios_perfil?.nome_exibicao || 'Responsável não identificado'}</div></li>
-  `).join('') : emptyState('Nenhuma movimentação ainda', 'Registre a primeira atualização deste processo.');
+  document.getElementById('det-timeline').innerHTML = data.length ? data.map(m=>{
+    const isRobo = m.origem === 'ROBO_DATAJUD';
+    const responsavel = isRobo ? 'Identificado automaticamente (DataJud/CNJ)' : (m.usuarios_perfil?.nome_exibicao || 'Responsável não identificado');
+    return `<li><div class="tdate">${fmtDate(m.data_movimentacao)} ${isRobo ? '<span class="badge-robo">DataJud</span>' : ''}</div><div class="tdesc">${m.descricao}</div>
+    <div class="tresp">${responsavel}</div></li>`;
+  }).join('') : emptyState('Nenhuma movimentação ainda', 'Registre a primeira atualização deste processo.');
 }
 
 async function salvarMovimentacao(){
@@ -1436,7 +1461,7 @@ async function carregarTarefasDoProcesso(processoId){
   if(error){ document.getElementById('det-tarefas').innerHTML=''; return; }
   document.getElementById('det-tarefas').innerHTML = data.length ? data.map(t=>`
     <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px solid #eee; font-size:13px;">
-      <div><b>${t.titulo}</b><br><span style="color:var(--textSecondary); font-size:11px;">Prazo: ${fmtDate(t.data_prazo)}</span></div>
+      <div><b>${t.titulo}</b> ${t.origem==='ROBO_DATAJUD' ? '<span class="badge-robo">DataJud</span>' : ''}<br><span style="color:var(--textSecondary); font-size:11px;">Prazo: ${fmtDate(t.data_prazo)}</span></div>
       <div><span class="badge badge-${t.status}">${t.status}</span>
       ${t.status!=='CONCLUIDA' ? `<button class="btn-ghost" onclick="concluirTarefa('${t.id}','${processoId}')">Concluir</button>` : ''}</div>
     </div>
