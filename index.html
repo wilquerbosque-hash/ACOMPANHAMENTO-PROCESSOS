@@ -169,6 +169,7 @@
   .timeline .tdesc{ font-size:13px; margin:2px 0; color:var(--textPrimary); }
   .timeline .tresp{ font-size:11px; color:var(--textMuted); }
   .badge-robo{ display:inline-block; margin-left:6px; padding:2px 8px; border-radius:999px; font-size:10px; font-weight:700; background:var(--sucessoBg); color:var(--konsiTeal); vertical-align:middle; }
+  .badge-csv{ display:inline-block; margin-left:6px; padding:2px 8px; border-radius:999px; font-size:10px; font-weight:700; background:#1c2a38; color:#6db0e0; vertical-align:middle; }
   .painel-resumo-simples{ background:#132420; border:1px solid var(--konsiTealDark); border-radius:10px; padding:14px 16px; margin-bottom:16px; }
   .painel-resumo-simples--vazio{ background:#1c1c1a; border-color:#2a2a27; }
   .painel-resumo-simples-label{ font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.03em; color:var(--konsiTeal); margin-bottom:6px; }
@@ -435,12 +436,22 @@
           <option value="ATIVO" selected>Só ativos</option>
           <option value="ARQUIVADO">Só arquivados</option>
         </select>
+        <select id="f-origem-cadastro">
+          <option value="">Qualquer origem de cadastro</option>
+          <option value="MANUAL">Cadastrado manualmente</option>
+          <option value="IMPORTACAO_CSV">Importado via CSV</option>
+        </select>
         <input type="text" id="f-busca" placeholder="Buscar por nome ou nº processo">
         <span style="font-size:12px; color:var(--textSecondary); align-self:center;">Ajuizado entre</span>
         <input type="date" id="f-ajuizamento-de" title="Ajuizado a partir de">
         <span style="font-size:12px; color:var(--textSecondary); align-self:center;">e</span>
         <input type="date" id="f-ajuizamento-ate" title="Ajuizado até">
         <button class="btn-ghost" onclick="limparFiltroAjuizamento()">Limpar datas</button>
+        <span style="font-size:12px; color:var(--textSecondary); align-self:center;">Cadastrado entre</span>
+        <input type="date" id="f-cadastro-de" title="Cadastrado a partir de">
+        <span style="font-size:12px; color:var(--textSecondary); align-self:center;">e</span>
+        <input type="date" id="f-cadastro-ate" title="Cadastrado até">
+        <button class="btn-ghost" onclick="limparFiltroCadastro()">Limpar datas</button>
       </div>
       <div class="panel">
         <div class="table-wrap"><table id="tbl-processos" class="table-compact">
@@ -955,7 +966,7 @@ function montarFiltros(){
   const bancos = [...new Set(processosCache.map(p=>p.banco).filter(Boolean))].sort();
   const selBanco = document.getElementById('f-banco');
   selBanco.innerHTML = '<option value="">Todos os bancos</option>' + bancos.map(b=>`<option>${b}</option>`).join('');
-  ['f-banco','f-motivo','f-risco','f-busca','f-ajuizamento-de','f-ajuizamento-ate','f-status-processo'].forEach(id=>{
+  ['f-banco','f-motivo','f-risco','f-busca','f-ajuizamento-de','f-ajuizamento-ate','f-status-processo','f-origem-cadastro','f-cadastro-de','f-cadastro-ate'].forEach(id=>{
     document.getElementById(id).oninput = ()=>{ paginaProcessosAtual = 1; renderTabelaProcessos(); };
   });
   document.getElementById('pag-processos-tamanho').onchange = ()=>{ paginaProcessosAtual = 1; renderTabelaProcessos(); };
@@ -968,6 +979,13 @@ function limparFiltroAjuizamento(){
   renderTabelaProcessos();
 }
 
+function limparFiltroCadastro(){
+  document.getElementById('f-cadastro-de').value = '';
+  document.getElementById('f-cadastro-ate').value = '';
+  paginaProcessosAtual = 1;
+  renderTabelaProcessos();
+}
+
 function renderTabelaProcessos(){
   const banco = document.getElementById('f-banco').value;
   const motivo = document.getElementById('f-motivo').value;
@@ -976,15 +994,21 @@ function renderTabelaProcessos(){
   const ajuizDe = document.getElementById('f-ajuizamento-de').value;
   const ajuizAte = document.getElementById('f-ajuizamento-ate').value;
   const statusProc = document.getElementById('f-status-processo').value;
+  const origemCadastro = document.getElementById('f-origem-cadastro').value;
+  const cadastroDe = document.getElementById('f-cadastro-de').value;
+  const cadastroAte = document.getElementById('f-cadastro-ate').value;
   const tbody = document.querySelector('#tbl-processos tbody');
   const filtrado = processosCache.filter(p=>
     (!banco || p.banco===banco) &&
     (!motivo || p.motivo===motivo) &&
     (!risco || p.classificacao_risco===risco) &&
     (!statusProc || (p.status_processo||'ATIVO')===statusProc) &&
+    (!origemCadastro || (p.origem_cadastro||'MANUAL')===origemCadastro) &&
     (!busca || (p.nome_cliente||'').toLowerCase().includes(busca) || (p.numero_processo||'').includes(busca)) &&
     (!ajuizDe || (p.data_ajuizamento && p.data_ajuizamento >= ajuizDe)) &&
-    (!ajuizAte || (p.data_ajuizamento && p.data_ajuizamento <= ajuizAte))
+    (!ajuizAte || (p.data_ajuizamento && p.data_ajuizamento <= ajuizAte)) &&
+    (!cadastroDe || (p.criado_em && p.criado_em.slice(0,10) >= cadastroDe)) &&
+    (!cadastroAte || (p.criado_em && p.criado_em.slice(0,10) <= cadastroAte))
   ).sort((a,b)=>{
     if(!a.data_ajuizamento && !b.data_ajuizamento) return 0;
     if(!a.data_ajuizamento) return 1;  // sem data vai pro fim
@@ -1511,6 +1535,7 @@ async function salvarNovoProcesso(){
     valor_risco: document.getElementById('np-valor-risco').value || null,
     situacao_atual: document.getElementById('np-situacao').value.trim() || 'AGUARDANDO CITAÇÃO/CIÊNCIA',
     situacao_evidencias: calcularSituacaoEvidencias('np'),
+    origem_cadastro: 'MANUAL',
     responsavel_cadastro: currentUser.id
   };
   if(!payload.numero_processo || !payload.nome_cliente || !payload.banco){
@@ -1711,6 +1736,7 @@ function processarLinhasCsv(linhas){
         // aceita NULL. Por isso sempre mandamos um texto concreto.
         situacao_atual: (linha.situacao_atual||'').trim() || 'AGUARDANDO CITAÇÃO/CIÊNCIA',
         situacao_evidencias: normalizarEvidenciasCsv(linha.situacao_evidencias),
+        origem_cadastro: 'IMPORTACAO_CSV',
         responsavel_cadastro: currentUser.id,
       };
       csvLinhasValidas.push(payload);
@@ -1812,6 +1838,8 @@ function renderDetView(p){
       ${fc('Liminar', p.liminar==null ? '—' : (p.liminar ? 'Sim' : 'Não'))}
       ${fc('Valor em risco', fmtMoney(p.valor_risco))}
       ${fc('Evidências enviadas ao banco', `<span class="badge badge-${p.situacao_evidencias||'AGUARDANDO_CONTESTACAO'}">${LABEL_EVIDENCIAS[p.situacao_evidencias]||LABEL_EVIDENCIAS.AGUARDANDO_CONTESTACAO}</span>`)}
+      ${fc('Origem do cadastro', p.origem_cadastro==='IMPORTACAO_CSV' ? '<span class="badge-csv">Importação CSV</span>' : 'Manual')}
+      ${fc('Cadastrado em', fmtDate((p.criado_em||'').slice(0,10)))}
       ${fc('Classificação de risco', `<span class="badge badge-${p.classificacao_risco}">${p.classificacao_risco}</span>`)}
       ${fc('Resultado', `<span class="badge badge-${p.resultado}">${RESULTADO_LABEL[p.resultado]||p.resultado}</span>`)}
       ${fc('Status do processo', `<span class="badge badge-${p.status_processo||'ATIVO'}">${(p.status_processo||'ATIVO')==='ATIVO'?'Ativo':'Arquivado/Extinto'}</span>`)}
