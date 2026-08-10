@@ -406,10 +406,10 @@
       <div id="form-novo-mes" style="display:none;" class="panel">
         <div class="form-row">
           <div><label>Mês de referência</label><input id="nm-competencia" type="month" onchange="atualizarPreviewJudicializadas()"></div>
-          <div><label>Total de operações no mês</label><input id="nm-total-operacoes" type="number" min="0"></div>
+          <div><label>Total de operações no mês</label><input id="nm-total-operacoes" type="text" inputmode="numeric"></div>
         </div>
         <div class="form-row">
-          <div><label>Produção bruta do mês (R$)</label><input id="nm-producao-bruta" type="number" min="0" step="0.01" placeholder="Soma da coluna 'Produção Bruta' do relatório de Contratos Pagos"></div>
+          <div><label>Produção bruta do mês (R$)</label><input id="nm-producao-bruta" type="text" inputmode="decimal" placeholder="Ex: 21.950.309,63 (aceita colar direto da planilha, com ponto de milhar e vírgula decimal)"></div>
         </div>
         <div class="field-note" style="margin:-4px 0 14px;">
           Judicializadas até hoje: <b id="nm-judicializadas-preview" style="color:var(--textPrimary);">0</b> —
@@ -1667,16 +1667,28 @@ async function excluirMetrica(competencia){
   toast('Registro excluído.');
   await carregarMetricas();
 }
+// Aceita tanto "21950309.63" (ponto decimal) quanto "21.950.309,63" (formato
+// brasileiro, ponto de milhar + vírgula decimal) — detecta pela presença de
+// vírgula, já que só o formato BR usa vírgula como separador decimal.
+function parseNumeroBR(valor){
+  if(valor==null) return null;
+  const v = String(valor).trim();
+  if(!v) return null;
+  const normalizado = v.includes(',') ? v.replace(/\./g,'').replace(',', '.') : v;
+  const n = parseFloat(normalizado);
+  return isNaN(n) ? null : n;
+}
+
 async function salvarMetricaMensal(){
   const competenciaMes = metricaEditandoCompetencia || document.getElementById('nm-competencia').value;
-  const totalOperacoes = document.getElementById('nm-total-operacoes').value;
-  const producaoBruta = document.getElementById('nm-producao-bruta').value;
-  if(!competenciaMes || totalOperacoes===''){ toast('Preencha o mês e o total de operações.'); return; }
+  const totalOperacoes = parseNumeroBR(document.getElementById('nm-total-operacoes').value);
+  const producaoBruta = parseNumeroBR(document.getElementById('nm-producao-bruta').value);
+  if(!competenciaMes || totalOperacoes===null){ toast('Preencha o mês e o total de operações.'); return; }
   const competencia = competenciaMes + '-01';
   const judicializadas = contarJudicializadasNoMes(competenciaMes);
   const { error } = await sb.from('metricas_mensais').upsert({
-    competencia, total_operacoes: Number(totalOperacoes), total_contestadas: judicializadas,
-    total_producao_bruta: producaoBruta==='' ? null : Number(producaoBruta),
+    competencia, total_operacoes: Math.round(totalOperacoes), total_contestadas: judicializadas,
+    total_producao_bruta: producaoBruta,
     atualizado_por: currentUser.id
   }, { onConflict: 'competencia' });
   if(error){ toast('Erro: '+error.message); return; }
