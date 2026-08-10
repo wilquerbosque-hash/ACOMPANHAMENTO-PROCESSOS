@@ -488,6 +488,15 @@
           <tbody id="compliance-top-processos-tbody"></tbody>
         </table></div>
       </div>
+
+      <div class="panel">
+        <h3>Histórico de alterações de risco</h3>
+        <p style="font-size:12px; color:var(--textSecondary); margin:-8px 0 14px;">Toda vez que a classificação de risco de um processo é alterada, fica registrado aqui automaticamente — quem mudou, de quê pra quê, e quando. Últimas 50 alterações.</p>
+        <div class="table-wrap"><table class="table-compact">
+          <thead><tr><th>Quando</th><th>Processo</th><th>Cliente</th><th>De</th><th></th><th>Para</th><th>Alterado por</th></tr></thead>
+          <tbody id="compliance-log-risco-tbody"></tbody>
+        </table></div>
+      </div>
     </section>
 
     <!-- ---------- PROCESSOS ---------- -->
@@ -1457,6 +1466,7 @@ function renderBarrasValor(container, itens, onClickItem){
 async function carregarCompliance(){
   await carregarProvisionamentoPercentuais();
   carregarExposicaoConsolidada();
+  carregarLogAuditoriaRisco();
   const ativos = processosCache.filter(p=>(p.status_processo||'ATIVO')==='ATIVO');
   const total = ativos.length;
   const valorTotalRisco = ativos.reduce((s,p)=>s+(Number(p.valor_risco)||0),0);
@@ -1674,6 +1684,40 @@ function renderGraficoExposicao(linhas, projecaoQtd, projecaoValor){
       ${labelSvg}
     </svg>
   `;
+}
+
+// ---------------- HISTÓRICO DE ALTERAÇÕES DE RISCO ----------------
+async function carregarLogAuditoriaRisco(){
+  const tbody = document.getElementById('compliance-log-risco-tbody');
+  const { data, error } = await sb.from('logs_auditoria_processos')
+    .select('criado_em, detalhe, processos_judiciais(numero_processo, nome_cliente), usuarios_perfil(nome_exibicao)')
+    .eq('acao', 'ATUALIZACAO_RISCO')
+    .order('criado_em', { ascending: false })
+    .limit(50);
+
+  if(error){
+    tbody.innerHTML = `<tr><td colspan="7">${emptyState('Não foi possível carregar o log', error.message)}</td></tr>`;
+    return;
+  }
+  if(!data?.length){
+    tbody.innerHTML = `<tr><td colspan="7">${emptyState('Nenhuma alteração de risco registrada ainda', 'Assim que alguém mudar a classificação de risco de um processo, aparece aqui automaticamente.')}</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = data.map(l=>{
+    const p = l.processos_judiciais || {};
+    const de = l.detalhe?.de || '—';
+    const para = l.detalhe?.para || '—';
+    return `<tr>
+      <td style="white-space:nowrap;">${new Date(l.criado_em).toLocaleString('pt-BR')}</td>
+      <td class="truncate" title="${p.numero_processo||''}">${p.numero_processo||'—'}</td>
+      <td class="truncate" title="${p.nome_cliente||''}">${p.nome_cliente||'—'}</td>
+      <td><span class="badge badge-${de}">${de}</span></td>
+      <td style="color:var(--textMuted);">→</td>
+      <td><span class="badge badge-${para}">${para}</span></td>
+      <td>${l.usuarios_perfil?.nome_exibicao || 'Não identificado'}</td>
+    </tr>`;
+  }).join('');
 }
 
 function exportarComplianceCsv(){
