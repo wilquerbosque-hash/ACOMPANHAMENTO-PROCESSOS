@@ -438,6 +438,24 @@
 
       <div class="cards-row" id="compliance-kpi-cards"></div>
 
+      <div class="panel" style="border-color:var(--konsiTeal);">
+        <h3 style="display:flex; align-items:center; gap:8px;">
+          Exposição consolidada
+          <span style="font-size:9.5px; font-weight:700; color:var(--konsiTeal); background:#0f2b24; padding:2px 8px; border-radius:5px;">VENDAS x CONTESTAÇÃO</span>
+        </h3>
+        <p style="font-size:12px; color:var(--textSecondary); margin:-8px 0 16px;">Soma de todos os meses cadastrados na aba Métricas — quanto foi vendido/produzido e quanto disso virou ação judicial.</p>
+        <div class="cards-row" id="exposicao-kpi-cards" style="margin-bottom:12px;"></div>
+        <div class="grid-2" id="exposicao-projecao-cards" style="margin-bottom:20px;"></div>
+        <h4 style="font-size:13px; margin:0 0 10px; color:var(--textPrimary);">Evolução mensal · real e projetada</h4>
+        <div id="exposicao-chart" style="margin-bottom:20px;"></div>
+        <h4 style="font-size:13px; margin:0 0 10px; color:var(--textPrimary);">Detalhamento mês a mês</h4>
+        <div class="table-wrap"><table class="table-compact">
+          <thead><tr><th>Mês</th><th>Vendidos</th><th>Contestados</th><th>% qtd</th><th>Produção</th><th>Contestado R$</th><th>% valor</th></tr></thead>
+          <tbody id="exposicao-tbody"></tbody>
+        </table></div>
+        <p class="field-note" style="margin-top:12px;">Projeção calculada por tendência a partir dos meses já cadastrados na aba Métricas — é uma estimativa para apoiar o provisionamento, não uma previsão garantida.</p>
+      </div>
+
       <div class="grid-2">
         <div class="panel">
           <h3>Exposição por banco (valor em risco)</h3>
@@ -1438,6 +1456,7 @@ function renderBarrasValor(container, itens, onClickItem){
 
 async function carregarCompliance(){
   await carregarProvisionamentoPercentuais();
+  carregarExposicaoConsolidada();
   const ativos = processosCache.filter(p=>(p.status_processo||'ATIVO')==='ATIVO');
   const total = ativos.length;
   const valorTotalRisco = ativos.reduce((s,p)=>s+(Number(p.valor_risco)||0),0);
@@ -1504,6 +1523,157 @@ async function salvarProvisionamentoPercentuais(){
   if(error){ toast('Erro ao salvar: '+error.message); return; }
   toast('Percentuais de provisionamento atualizados.');
   await carregarCompliance();
+}
+
+// ---------------- EXPOSIÇÃO CONSOLIDADA (vendas x contestação) ----------------
+// Regressão linear simples (mínimos quadrados) sobre uma série de valores —
+// usada pra projetar os próximos meses a partir da tendência dos que já
+// foram cadastrados. Não é um modelo estatístico sofisticado: é uma
+// estimativa direta, pensada pra apoiar o provisionamento, não uma previsão garantida.
+function calcularTendenciaLinear(valores){
+  const n = valores.length;
+  const xMedio = (n-1)/2;
+  const yMedio = valores.reduce((s,v)=>s+v,0)/n;
+  let numerador = 0, denominador = 0;
+  valores.forEach((y,x)=>{ numerador += (x-xMedio)*(y-yMedio); denominador += (x-xMedio)**2; });
+  const inclinacao = denominador ? numerador/denominador : 0;
+  const intercepto = yMedio - inclinacao*xMedio;
+  return (xFuturo) => Math.max(0, intercepto + inclinacao*xFuturo);
+}
+
+const MESES_PROJECAO = 2;
+
+async function carregarExposicaoConsolidada(){
+  const { data: meses, error } = await sb.from('metricas_mensais')
+    .select('competencia, total_operacoes, total_producao_bruta')
+    .order('competencia', { ascending: true });
+
+  if(error || !meses?.length){
+    document.getElementById('exposicao-kpi-cards').innerHTML = emptyState('Nenhum mês cadastrado ainda', 'Registre pelo menos um mês na aba Métricas para ver a exposição consolidada.');
+    document.getElementById('exposicao-projecao-cards').innerHTML = '';
+    document.getElementById('exposicao-chart').innerHTML = '';
+    document.getElementById('exposicao-tbody').innerHTML = '';
+    return;
+  }
+
+  const linhas = meses.map(m=>{
+    const mesStr = m.competencia.slice(0,7);
+    const contestados = contarJudicializadasNoMes(mesStr);
+    const valorContestado = somarValorContestadoNoMes(mesStr);
+    return {
+      mes: mesStr, vendidos: m.total_operacoes||0, producao: m.total_producao_bruta||0,
+      contestados, valorContestado,
+      pctQtd: m.total_operacoes ? contestados/m.total_operacoes*100 : 0,
+      pctValor: m.total_producao_bruta ? valorContestado/m.total_producao_bruta*100 : 0,
+    };
+  });
+
+  const totalVendidos = linhas.reduce((s,l)=>s+l.vendidos,0);
+  const totalContestados = linhas.reduce((s,l)=>s+l.contestados,0);
+  const totalProducao = linhas.reduce((s,l)=>s+l.producao,0);
+  const totalValorContestado = linhas.reduce((s,l)=>s+l.valorContestado,0);
+  const pctQtdTotal = totalVendidos ? totalContestados/totalVendidos*100 : 0;
+  const pctValorTotal = totalProducao ? totalValorContestado/totalProducao*100 : 0;
+
+  document.getElementById('exposicao-kpi-cards').innerHTML = `
+    <div class="kpi-card"><div><div class="label">Contratos vendidos</div><div class="value">${totalVendidos.toLocaleString('pt-BR')}</div></div></div>
+    <div class="kpi-card"><div><div class="label">Contratos contestados</div><div class="value">${totalContestados.toLocaleString('pt-BR')}</div></div></div>
+    <div class="kpi-card alert"><div><div class="label">% contestado (quantidade)</div><div class="value">${pctQtdTotal.toFixed(2)}%</div></div></div>
+    <div class="kpi-card"><div><div class="label">Produção bruta total</div><div class="value">${fmtMoney(totalProducao)}</div></div></div>
+    <div class="kpi-card"><div><div class="label">Valor contestado</div><div class="value">${fmtMoney(totalValorContestado)}</div></div></div>
+    <div class="kpi-card alert"><div><div class="label">% contestado (R$)</div><div class="value">${pctValorTotal.toFixed(2)}%</div></div></div>
+  `;
+
+  let projecaoQtd = [], projecaoValor = [];
+  if(linhas.length >= 2){
+    const funcQtd = calcularTendenciaLinear(linhas.map(l=>l.pctQtd));
+    const funcValor = calcularTendenciaLinear(linhas.map(l=>l.pctValor));
+    for(let i=0; i<MESES_PROJECAO; i++){
+      projecaoQtd.push(funcQtd(linhas.length + i));
+      projecaoValor.push(funcValor(linhas.length + i));
+    }
+    const producaoBase = linhas[linhas.length-1].producao;
+    const valorAProvisionar = producaoBase * (projecaoValor[0]/100);
+    document.getElementById('exposicao-projecao-cards').innerHTML = `
+      <div class="panel" style="background:#1c2a38; border:1px dashed #3987e5; margin-bottom:0;">
+        <div style="font-size:11px; color:#6db0e0; margin-bottom:6px;">Projeção próximo mês · % contestado (R$)</div>
+        <div style="font-size:22px; font-weight:700; color:#6db0e0;">${projecaoValor[0].toFixed(2)}%</div>
+      </div>
+      <div class="panel" style="background:#1c2a38; border:1px dashed #3987e5; margin-bottom:0;">
+        <div style="font-size:11px; color:#6db0e0; margin-bottom:6px;">Valor a provisionar (projeção, com base na produção do último mês)</div>
+        <div style="font-size:22px; font-weight:700; color:#6db0e0;">≈ ${fmtMoney(valorAProvisionar)}</div>
+      </div>
+    `;
+  } else {
+    document.getElementById('exposicao-projecao-cards').innerHTML = `<div class="panel" style="margin-bottom:0;"><p class="field-note" style="margin:0;">Cadastre pelo menos 2 meses na aba Métricas para o sistema calcular uma projeção de tendência.</p></div>`;
+  }
+
+  renderGraficoExposicao(linhas, projecaoQtd, projecaoValor);
+
+  document.getElementById('exposicao-tbody').innerHTML = linhas.map(l=>`
+    <tr>
+      <td>${fmtMesAno(l.mes+'-01')}</td>
+      <td>${l.vendidos.toLocaleString('pt-BR')}</td>
+      <td>${l.contestados.toLocaleString('pt-BR')}</td>
+      <td>${l.pctQtd.toFixed(2)}%</td>
+      <td>${fmtMoney(l.producao)}</td>
+      <td>${fmtMoney(l.valorContestado)}</td>
+      <td>${l.pctValor.toFixed(2)}%</td>
+    </tr>
+  `).join('');
+}
+
+function renderGraficoExposicao(linhas, projecaoQtd, projecaoValor){
+  const W = 760, H = 220, padL = 42, padR = 16, padT = 16, padB = 28;
+  const nReal = linhas.length;
+  const nTotal = nReal + projecaoQtd.length;
+  const qtdVals = linhas.map(l=>l.pctQtd).concat(projecaoQtd);
+  const valVals = linhas.map(l=>l.pctValor).concat(projecaoValor);
+  const maxY = Math.max(...qtdVals, ...valVals, 0.1) * 1.2;
+
+  const x = (i) => padL + (i/(nTotal-1||1)) * (W-padL-padR);
+  const y = (v) => H-padB - (v/maxY) * (H-padT-padB);
+
+  const pontosQtdReal = linhas.map((l,i)=>[x(i), y(l.pctQtd)]);
+  const pontosValReal = linhas.map((l,i)=>[x(i), y(l.pctValor)]);
+  const pontosQtdProj = [pontosQtdReal[pontosQtdReal.length-1], ...projecaoQtd.map((v,i)=>[x(nReal+i), y(v)])];
+  const pontosValProj = [pontosValReal[pontosValReal.length-1], ...projecaoValor.map((v,i)=>[x(nReal+i), y(v)])];
+
+  const toPath = (pontos) => pontos.map((p,i)=> (i===0?'M':'L')+p[0].toFixed(1)+','+p[1].toFixed(1)).join(' ');
+
+  const gridLines = [0, 0.25, 0.5, 0.75, 1].map(f=>{
+    const v = maxY*f;
+    return `<line x1="${padL}" y1="${y(v).toFixed(1)}" x2="${W-padR}" y2="${y(v).toFixed(1)}" stroke="var(--border)" stroke-width="1"/>
+            <text x="${padL-8}" y="${(y(v)+3).toFixed(1)}" font-size="9" fill="var(--textSecondary)" text-anchor="end">${v.toFixed(1)}%</text>`;
+  }).join('');
+
+  const labels = linhas.map(l=>fmtMesAno(l.mes+'-01').slice(0,3))
+    .concat(projecaoQtd.map((_,i)=>{
+      const d = new Date(linhas[linhas.length-1].mes+'-01T00:00:00');
+      d.setMonth(d.getMonth()+i+1);
+      return fmtMesAno(d.toISOString().slice(0,10)).slice(0,3)+'*';
+    }));
+  const labelSvg = labels.map((lb,i)=>`<text x="${x(i).toFixed(1)}" y="${H-8}" font-size="9" fill="var(--textSecondary)" text-anchor="middle">${lb}</text>`).join('');
+
+  const pontinhos = (pontos, cor) => pontos.map(p=>`<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="2.5" fill="${cor}"/>`).join('');
+
+  document.getElementById('exposicao-chart').innerHTML = `
+    <div style="display:flex; gap:16px; margin-bottom:8px; font-size:11px; color:var(--textSecondary); flex-wrap:wrap;">
+      <span style="display:flex; align-items:center; gap:5px;"><span style="width:9px; height:9px; border-radius:2px; background:var(--konsiTeal);"></span>% quantidade</span>
+      <span style="display:flex; align-items:center; gap:5px;"><span style="width:9px; height:9px; border-radius:2px; background:#F3A42E;"></span>% valor</span>
+      ${projecaoQtd.length ? '<span style="color:var(--textMuted);">(tracejado = projeção; * = mês projetado)</span>' : ''}
+    </div>
+    <svg viewBox="0 0 ${W} ${H}" style="width:100%; height:auto; max-height:240px;">
+      ${gridLines}
+      <path d="${toPath(pontosQtdReal)}" fill="none" stroke="var(--konsiTeal)" stroke-width="2"/>
+      <path d="${toPath(pontosQtdProj)}" fill="none" stroke="var(--konsiTeal)" stroke-width="2" stroke-dasharray="5,4"/>
+      <path d="${toPath(pontosValReal)}" fill="none" stroke="#F3A42E" stroke-width="2"/>
+      <path d="${toPath(pontosValProj)}" fill="none" stroke="#F3A42E" stroke-width="2" stroke-dasharray="5,4"/>
+      ${pontinhos(pontosQtdReal, 'var(--konsiTeal)')}
+      ${pontinhos(pontosValReal, '#F3A42E')}
+      ${labelSvg}
+    </svg>
+  `;
 }
 
 function exportarComplianceCsv(){
