@@ -701,6 +701,22 @@
   </div>
 </div>
 
+<!-- ============ MODAL: EDITAR TAREFA (admin) ============ -->
+<div class="modal-overlay" id="modal-editar-tarefa">
+  <div class="modal">
+    <div class="modal-head"><h3>Editar tarefa</h3><button onclick="closeModal('modal-editar-tarefa')">✕</button></div>
+    <div class="form-row single"><div><label>Título</label><input id="et-titulo"></div></div>
+    <div class="form-row">
+      <div><label>Prazo</label><input id="et-prazo" type="date"></div>
+      <div><label>Responsável</label><select id="et-responsavel"></select></div>
+    </div>
+    <div class="form-actions">
+      <button class="btn-secondary" onclick="closeModal('modal-editar-tarefa')">Cancelar</button>
+      <button class="btn-primary" style="width:auto" onclick="salvarEdicaoTarefa()">Salvar tarefa</button>
+    </div>
+  </div>
+</div>
+
 <!-- ============ MODAL: QUESTIONÁRIO GUIADO DE CLASSIFICAÇÃO DE RISCO ============ -->
 <div class="modal-overlay" id="modal-questionario-risco">
   <div class="modal wide">
@@ -872,6 +888,9 @@
           <div><label>Título</label><input id="tarefa-titulo" placeholder="Acompanhar processo..."></div>
           <div><label>Prazo</label><input id="tarefa-prazo" type="date"></div>
         </div>
+        <div class="form-row single">
+          <div><label>Responsável (quem vai realizar)</label><select id="tarefa-responsavel"></select></div>
+        </div>
         <button class="btn-secondary" onclick="criarTarefa()">Criar tarefa</button>
       </div>
 
@@ -959,8 +978,22 @@ async function afterLogin(){
   document.getElementById('user-name').textContent = perfil ? perfil.nome_exibicao : currentUser.email;
   currentUserIsAdmin = !!perfil?.is_admin;
   document.getElementById('nav-usuarios').style.display = currentUserIsAdmin ? 'inline-block' : 'none';
+  await carregarUsuariosAtivos();
   await carregarTudo();
   sincronizarComDatajud(); // dispara em segundo plano, não trava a tela de login
+}
+
+// Lista de usuários ativos, usada para preencher os seletores de
+// "responsável" nas tarefas — carregada uma vez no login.
+let usuariosAtivosCache = [];
+async function carregarUsuariosAtivos(){
+  const { data } = await sb.from('usuarios_perfil').select('id, nome_exibicao').eq('ativo', true).order('nome_exibicao');
+  usuariosAtivosCache = data || [];
+}
+function opcoesResponsavelHtml(selecionadoId){
+  return usuariosAtivosCache.map(u=>
+    `<option value="${u.id}" ${u.id===selecionadoId?'selected':''}>${u.nome_exibicao}</option>`
+  ).join('');
 }
 
 // Chama o robô do DataJud ao logar. A própria função decide se já rodou
@@ -1165,12 +1198,7 @@ function renderTabelaProcessos(){
     (!ajuizAte || (p.data_ajuizamento && p.data_ajuizamento <= ajuizAte)) &&
     (!cadastroDe || (p.criado_em && p.criado_em.slice(0,10) >= cadastroDe)) &&
     (!cadastroAte || (p.criado_em && p.criado_em.slice(0,10) <= cadastroAte))
-  ).sort((a,b)=>{
-    if(!a.data_ajuizamento && !b.data_ajuizamento) return 0;
-    if(!a.data_ajuizamento) return 1;  // sem data vai pro fim
-    if(!b.data_ajuizamento) return -1;
-    return b.data_ajuizamento.localeCompare(a.data_ajuizamento); // mais recente primeiro
-  });
+  ).sort((a,b)=> (b.criado_em||'').localeCompare(a.criado_em||'')); // mais recém-cadastrado primeiro
 
   const porPagina = parseInt(document.getElementById('pag-processos-tamanho').value, 10) || 25;
   const totalPaginas = Math.max(1, Math.ceil(filtrado.length / porPagina));
@@ -1591,13 +1619,19 @@ async function carregarCompliance(){
 }
 
 async function salvarProvisionamentoPercentuais(){
-  const linhas = ['BAIXO','MEDIO','ALTO','CRITICO'].map(r=>({
-    classificacao_risco: r,
-    percentual: parseFloat(document.getElementById(`prov-pct-${r}`).value) || 0,
-    atualizado_por: currentUser.id,
-  }));
-  const { error } = await sb.from('provisionamento_percentuais').upsert(linhas, { onConflict: 'classificacao_risco' });
-  if(error){ toast('Erro ao salvar: '+error.message); return; }
+  const niveis = ['BAIXO','MEDIO','ALTO','CRITICO'];
+  const erros = [];
+  for(const r of niveis){
+    const percentual = parseFloat(document.getElementById(`prov-pct-${r}`).value) || 0;
+    // update() em vez de upsert(): as 4 linhas já existem desde a migração
+    // inicial — upsert exigiria também permissão de INSERT no banco, que
+    // não existe de propósito (só update, restrito a admin).
+    const { error } = await sb.from('provisionamento_percentuais')
+      .update({ percentual, atualizado_por: currentUser.id })
+      .eq('classificacao_risco', r);
+    if(error) erros.push(`${r}: ${error.message}`);
+  }
+  if(erros.length){ toast('Erro ao salvar: '+erros.join(' | ')); return; }
   toast('Percentuais de provisionamento atualizados.');
   await carregarCompliance();
 }
@@ -1854,16 +1888,22 @@ async function carregarTarefas(){
   const statusFiltro = document.getElementById('f-tarefa-status').value;
   document.getElementById('f-tarefa-status').onchange = carregarTarefas;
   const filtrado = statusFiltro ? data.filter(t=>t.status===statusFiltro) : data;
-  document.querySelector('#tbl-tarefas tbody').innerHTML = filtrado.length ? filtrado.map(t=>`
-    <tr>
+  document.querySelector('#tbl-tarefas tbody').innerHTML = filtrado.length ? filtrado.map(t=>{
+    const souResponsavel = t.responsavel_id === currentUser.id;
+    return `<tr>
       <td>${fmtDate(t.data_prazo)}</td>
       <td>${t.titulo} ${t.origem_tarefa==='ROBO_DATAJUD' ? '<span class="badge-robo">DataJud</span>' : ''}</td>
       <td>${t.numero_processo}</td>
       <td>${t.nome_cliente}</td>
       <td>${t.responsavel||'—'}</td>
       <td><span class="badge badge-${t.status}">${t.status}</span></td>
-      <td>${t.status!=='CONCLUIDA' ? `<button class="btn-ghost" onclick="concluirTarefa('${t.tarefa_id}','${t.processo_id}')">Concluir</button>` : ''}</td>
-    </tr>`).join('') : `<tr><td colspan="7">${emptyState('Nenhuma tarefa encontrada', 'Abra um processo para criar um acompanhamento.')}</td></tr>`;
+      <td style="white-space:nowrap;">
+        ${t.status!=='CONCLUIDA' && souResponsavel ? `<button class="btn-ghost" onclick="concluirTarefa('${t.tarefa_id}','${t.processo_id}')">Concluir</button>` : ''}
+        ${currentUserIsAdmin ? `<button class="btn-ghost" onclick='abrirEdicaoTarefa(${JSON.stringify({id:t.tarefa_id, titulo:t.titulo, data_prazo:t.data_prazo, responsavel_id:t.responsavel_id, processo_id:t.processo_id})})'>Editar</button>` : ''}
+        ${currentUserIsAdmin ? `<button class="btn-ghost" style="color:var(--erro);" onclick="excluirTarefa('${t.tarefa_id}','${t.processo_id}')">Excluir</button>` : ''}
+      </td>
+    </tr>`;
+  }).join('') : `<tr><td colspan="7">${emptyState('Nenhuma tarefa encontrada', 'Abra um processo para criar um acompanhamento.')}</td></tr>`;
 }
 
 // ---------------- MÉTRICAS MENSAIS ----------------
@@ -2471,6 +2511,7 @@ function renderDetView(p){
       ${fc('Evidências enviadas ao banco', `<span class="badge badge-${p.situacao_evidencias||'AGUARDANDO_CONTESTACAO'}">${LABEL_EVIDENCIAS[p.situacao_evidencias]||LABEL_EVIDENCIAS.AGUARDANDO_CONTESTACAO}</span>`)}
       ${fc('Origem do cadastro', p.origem_cadastro==='IMPORTACAO_CSV' ? '<span class="badge-csv">Importação CSV</span>' : 'Manual')}
       ${fc('Cadastrado em', fmtDate((p.criado_em||'').slice(0,10)))}
+      ${fc('Última alteração no cadastro', p.atualizado_em ? new Date(p.atualizado_em).toLocaleString('pt-BR') : '—')}
       ${fc('Classificação de risco', `<span class="badge badge-${p.classificacao_risco}">${p.classificacao_risco}</span>${p.criterio_risco_respostas?.motivo ? `<div style="font-size:11px; color:var(--textSecondary); margin-top:4px; font-weight:400;">${p.criterio_risco_respostas.motivo}</div>` : ''}`)}
       ${fc('Resultado', `<span class="badge badge-${p.resultado}">${RESULTADO_LABEL[p.resultado]||p.resultado}</span>`)}
       ${fc('Status do processo', `<span class="badge badge-${p.status_processo||'ATIVO'}">${(p.status_processo||'ATIVO')==='ATIVO'?'Ativo':'Arquivado/Extinto'}</span>`)}
@@ -2491,6 +2532,7 @@ async function abrirDetalhe(id){
   document.getElementById('mov-data').value = new Date().toISOString().slice(0,10);
   document.getElementById('tarefa-prazo').value = '';
   document.getElementById('tarefa-titulo').value = `Acompanhar processo ${p.numero_processo}`;
+  document.getElementById('tarefa-responsavel').innerHTML = opcoesResponsavelHtml(currentUser.id);
 
   await carregarTimeline(id);
   await carregarTarefasDoProcesso(id);
@@ -2604,27 +2646,69 @@ async function carregarTarefasDoProcesso(processoId){
     .select('*, usuarios_perfil(nome_exibicao)')
     .eq('processo_id', processoId).order('data_prazo',{ascending:true});
   if(error){ document.getElementById('det-tarefas').innerHTML=''; return; }
-  document.getElementById('det-tarefas').innerHTML = data.length ? data.map(t=>`
-    <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px solid #eee; font-size:13px;">
-      <div><b>${t.titulo}</b> ${t.origem==='ROBO_DATAJUD' ? '<span class="badge-robo">DataJud</span>' : ''}<br><span style="color:var(--textSecondary); font-size:11px;">Prazo: ${fmtDate(t.data_prazo)}</span></div>
-      <div><span class="badge badge-${t.status}">${t.status}</span>
-      ${t.status!=='CONCLUIDA' ? `<button class="btn-ghost" onclick="concluirTarefa('${t.id}','${processoId}')">Concluir</button>` : ''}</div>
-    </div>
-  `).join('') : emptyState('Nenhuma tarefa', 'Crie um acompanhamento para este processo.');
+  document.getElementById('det-tarefas').innerHTML = data.length ? data.map(t=>{
+    const souResponsavel = t.responsavel_id === currentUser.id;
+    return `<div style="display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px solid #eee; font-size:13px;">
+      <div><b>${t.titulo}</b> ${t.origem==='ROBO_DATAJUD' ? '<span class="badge-robo">DataJud</span>' : ''}<br>
+        <span style="color:var(--textSecondary); font-size:11px;">Prazo: ${fmtDate(t.data_prazo)} · Responsável: ${t.usuarios_perfil?.nome_exibicao || '—'}</span></div>
+      <div style="white-space:nowrap;">
+        <span class="badge badge-${t.status}">${t.status}</span>
+        ${t.status!=='CONCLUIDA' && souResponsavel ? `<button class="btn-ghost" onclick="concluirTarefa('${t.id}','${processoId}')">Concluir</button>` : ''}
+        ${currentUserIsAdmin ? `<button class="btn-ghost" onclick='abrirEdicaoTarefa(${JSON.stringify({id:t.id, titulo:t.titulo, data_prazo:t.data_prazo, responsavel_id:t.responsavel_id, processo_id:processoId})})'>Editar</button>` : ''}
+        ${currentUserIsAdmin ? `<button class="btn-ghost" style="color:var(--erro);" onclick="excluirTarefa('${t.id}','${processoId}')">Excluir</button>` : ''}
+      </div>
+    </div>`;
+  }).join('') : emptyState('Nenhuma tarefa', 'Crie um acompanhamento para este processo.');
 }
 
 async function criarTarefa(){
   const titulo = document.getElementById('tarefa-titulo').value.trim();
   const data_prazo = document.getElementById('tarefa-prazo').value;
+  const responsavel_id = document.getElementById('tarefa-responsavel').value;
   if(!titulo || !data_prazo){ toast('Preencha o título e o prazo da tarefa.'); return; }
+  if(!responsavel_id){ toast('Selecione o responsável pela tarefa.'); return; }
   const { error } = await sb.from('tarefas_acompanhamento').insert({
-    processo_id: processoAtualId, titulo, data_prazo, responsavel_id: currentUser.id
+    processo_id: processoAtualId, titulo, data_prazo, responsavel_id
   });
   if(error){ toast('Erro: '+error.message); return; }
   toast('Tarefa criada.');
   document.getElementById('tarefa-prazo').value='';
   await carregarTarefasDoProcesso(processoAtualId);
   await carregarTarefas();
+}
+
+function abrirEdicaoTarefa(t){
+  document.getElementById('et-titulo').value = t.titulo;
+  document.getElementById('et-prazo').value = t.data_prazo;
+  document.getElementById('et-responsavel').innerHTML = opcoesResponsavelHtml(t.responsavel_id);
+  window.__tarefaEditandoId = t.id;
+  window.__tarefaEditandoProcessoId = t.processo_id;
+  openModal('modal-editar-tarefa');
+}
+
+async function salvarEdicaoTarefa(){
+  const titulo = document.getElementById('et-titulo').value.trim();
+  const data_prazo = document.getElementById('et-prazo').value;
+  const responsavel_id = document.getElementById('et-responsavel').value;
+  if(!titulo || !data_prazo){ toast('Preencha título e prazo.'); return; }
+  const { error } = await sb.from('tarefas_acompanhamento')
+    .update({ titulo, data_prazo, responsavel_id })
+    .eq('id', window.__tarefaEditandoId);
+  if(error){ toast('Erro: '+error.message+' (só administradores podem editar tarefa)'); return; }
+  toast('Tarefa atualizada.');
+  closeModal('modal-editar-tarefa');
+  const pid = window.__tarefaEditandoProcessoId;
+  await carregarTarefas();
+  if(pid && document.getElementById('modal-detalhe').classList.contains('active')) await carregarTarefasDoProcesso(pid);
+}
+
+async function excluirTarefa(tarefaId, processoId){
+  if(!confirm('Excluir esta tarefa? Essa ação não pode ser desfeita.')) return;
+  const { error } = await sb.from('tarefas_acompanhamento').delete().eq('id', tarefaId);
+  if(error){ toast('Erro: '+error.message+' (só administradores podem excluir tarefa)'); return; }
+  toast('Tarefa excluída.');
+  await carregarTarefas();
+  if(document.getElementById('modal-detalhe').classList.contains('active')) await carregarTarefasDoProcesso(processoId);
 }
 
 // Concluir tarefa: pede a movimentação resultante do acompanhamento e fecha o ciclo
@@ -2666,9 +2750,11 @@ async function carregarUsuarios(){
         <td>${u.email}</td>
         <td>${u.is_admin ? 'Sim' : 'Não'}</td>
         <td><span class="badge ${u.ativo && !u.banido ? 'badge-BAIXO' : 'badge-ATRASADA'}">${u.ativo && !u.banido ? 'Ativo' : 'Desativado'}</span></td>
-        <td>
+        <td style="white-space:nowrap;">
           <button class="btn-ghost" onclick="redefinirSenhaUsuario('${u.id}')">Redefinir senha</button>
           <button class="btn-ghost" onclick="alterarStatusUsuario('${u.id}', ${!(u.ativo && !u.banido)})">${u.ativo && !u.banido ? 'Desativar' : 'Reativar'}</button>
+          <button class="btn-ghost" onclick="alterarPermissoesUsuario('${u.id}', ${!u.is_admin})">${u.is_admin ? 'Remover admin' : 'Tornar admin'}</button>
+          <button class="btn-ghost" style="color:var(--erro);" onclick="excluirUsuario('${u.id}')">Excluir</button>
         </td>
       </tr>`).join('') : `<tr><td colspan="5">${emptyState('Nenhum usuário cadastrado ainda', '')}</td></tr>`;
   }catch(e){
@@ -2704,6 +2790,26 @@ async function alterarStatusUsuario(user_id, ativo){
     await chamarAdminUsuarios({ action:'alterar_status', user_id, ativo });
     toast(ativo ? 'Usuário reativado.' : 'Usuário desativado.');
     await carregarUsuarios();
+    await carregarUsuariosAtivos();
+  }catch(e){ toast('Erro: '+e.message); }
+}
+
+async function alterarPermissoesUsuario(user_id, is_admin){
+  if(!confirm(is_admin ? 'Tornar este usuário administrador?' : 'Remover a permissão de administrador deste usuário?')) return;
+  try{
+    await chamarAdminUsuarios({ action:'editar_permissoes', user_id, is_admin });
+    toast('Permissões atualizadas.');
+    await carregarUsuarios();
+  }catch(e){ toast('Erro: '+e.message); }
+}
+
+async function excluirUsuario(user_id){
+  if(!confirm('Excluir este usuário definitivamente? Essa ação não pode ser desfeita. Se o usuário já tiver processos ou tarefas vinculados a ele, a exclusão pode ser bloqueada — nesse caso, use "Desativar" em vez de excluir.')) return;
+  try{
+    await chamarAdminUsuarios({ action:'excluir', user_id });
+    toast('Usuário excluído.');
+    await carregarUsuarios();
+    await carregarUsuariosAtivos();
   }catch(e){ toast('Erro: '+e.message); }
 }
 </script>
