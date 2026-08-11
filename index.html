@@ -446,7 +446,7 @@
         <p style="font-size:12px; color:var(--textSecondary); margin:-8px 0 16px;">Soma de todos os meses cadastrados na aba Métricas — quanto foi vendido/produzido e quanto disso virou ação judicial.</p>
         <div class="cards-row" id="exposicao-kpi-cards" style="margin-bottom:12px;"></div>
         <div class="grid-2" id="exposicao-projecao-cards" style="margin-bottom:20px;"></div>
-        <h4 style="font-size:13px; margin:0 0 10px; color:var(--textPrimary);">Evolução mensal · real e projetada</h4>
+        <h4 id="exposicao-chart-titulo" style="font-size:13px; margin:0 0 10px; color:var(--textPrimary);">Evolução mensal · real e projetada</h4>
         <div id="exposicao-chart" style="margin-bottom:20px;"></div>
         <h4 style="font-size:13px; margin:0 0 10px; color:var(--textPrimary);">Detalhamento mês a mês</h4>
         <div class="table-wrap"><table class="table-compact">
@@ -1552,6 +1552,11 @@ function calcularTendenciaLinear(valores){
 }
 
 const MESES_PROJECAO = 2;
+// Limita o gráfico (e a base da projeção) aos meses mais recentes — com
+// muitos meses cadastrados, mostrar tudo de uma vez deixa os rótulos do
+// eixo ilegíveis e um mês fora da curva esmaga a escala do resto. A tabela
+// detalhada abaixo continua mostrando o histórico completo, sem corte.
+const MESES_JANELA_GRAFICO = 12;
 
 async function carregarExposicaoConsolidada(){
   const { data: meses, error } = await sb.from('metricas_mensais')
@@ -1594,15 +1599,17 @@ async function carregarExposicaoConsolidada(){
     <div class="kpi-card alert"><div><div class="label">% contestado (R$)</div><div class="value">${pctValorTotal.toFixed(2)}%</div></div></div>
   `;
 
+  const linhasJanela = linhas.slice(-MESES_JANELA_GRAFICO);
+
   let projecaoQtd = [], projecaoValor = [];
-  if(linhas.length >= 2){
-    const funcQtd = calcularTendenciaLinear(linhas.map(l=>l.pctQtd));
-    const funcValor = calcularTendenciaLinear(linhas.map(l=>l.pctValor));
+  if(linhasJanela.length >= 2){
+    const funcQtd = calcularTendenciaLinear(linhasJanela.map(l=>l.pctQtd));
+    const funcValor = calcularTendenciaLinear(linhasJanela.map(l=>l.pctValor));
     for(let i=0; i<MESES_PROJECAO; i++){
-      projecaoQtd.push(funcQtd(linhas.length + i));
-      projecaoValor.push(funcValor(linhas.length + i));
+      projecaoQtd.push(funcQtd(linhasJanela.length + i));
+      projecaoValor.push(funcValor(linhasJanela.length + i));
     }
-    const producaoBase = linhas[linhas.length-1].producao;
+    const producaoBase = linhasJanela[linhasJanela.length-1].producao;
     const valorAProvisionar = producaoBase * (projecaoValor[0]/100);
     document.getElementById('exposicao-projecao-cards').innerHTML = `
       <div class="panel" style="background:#1c2a38; border:1px dashed #3987e5; margin-bottom:0;">
@@ -1618,7 +1625,7 @@ async function carregarExposicaoConsolidada(){
     document.getElementById('exposicao-projecao-cards').innerHTML = `<div class="panel" style="margin-bottom:0;"><p class="field-note" style="margin:0;">Cadastre pelo menos 2 meses na aba Métricas para o sistema calcular uma projeção de tendência.</p></div>`;
   }
 
-  renderGraficoExposicao(linhas, projecaoQtd, projecaoValor);
+  renderGraficoExposicao(linhasJanela, projecaoQtd, projecaoValor, linhas.length > MESES_JANELA_GRAFICO);
 
   document.getElementById('exposicao-tbody').innerHTML = linhas.map(l=>`
     <tr>
@@ -1633,8 +1640,12 @@ async function carregarExposicaoConsolidada(){
   `).join('');
 }
 
-function renderGraficoExposicao(linhas, projecaoQtd, projecaoValor){
-  const W = 760, H = 220, padL = 42, padR = 16, padT = 16, padB = 28;
+function renderGraficoExposicao(linhas, projecaoQtd, projecaoValor, foiRecortado){
+  document.getElementById('exposicao-chart-titulo').textContent = foiRecortado
+    ? `Evolução mensal · últimos ${linhas.length} meses (real e projetada)`
+    : 'Evolução mensal · real e projetada';
+
+  const W = 760, H = 250, padL = 42, padR = 16, padT = 16, padB = 46;
   const nReal = linhas.length;
   const nTotal = nReal + projecaoQtd.length;
   const qtdVals = linhas.map(l=>l.pctQtd).concat(projecaoQtd);
@@ -1657,15 +1668,27 @@ function renderGraficoExposicao(linhas, projecaoQtd, projecaoValor){
             <text x="${padL-8}" y="${(y(v)+3).toFixed(1)}" font-size="9" fill="var(--textSecondary)" text-anchor="end">${v.toFixed(1)}%</text>`;
   }).join('');
 
-  const labels = linhas.map(l=>fmtMesAno(l.mes+'-01').slice(0,3))
+  // "mmm/aa" (com ano de 2 dígitos) evita ambiguidade quando a janela cruza
+  // a virada do ano (ex: jan/25 vs jan/26) — e os rótulos ficam rotacionados
+  // 40° pra não colidir uns com os outros, mesmo com bastante mês na tela.
+  const labelCurto = (dataStr) => {
+    const full = fmtMesAno(dataStr); // ex: "jan/2026"
+    const [mes, ano] = full.split('/');
+    return `${mes}/${ano.slice(2)}`;
+  };
+  const labels = linhas.map(l=>labelCurto(l.mes+'-01'))
     .concat(projecaoQtd.map((_,i)=>{
       const d = new Date(linhas[linhas.length-1].mes+'-01T00:00:00');
       d.setMonth(d.getMonth()+i+1);
-      return fmtMesAno(d.toISOString().slice(0,10)).slice(0,3)+'*';
+      return labelCurto(d.toISOString().slice(0,10))+'*';
     }));
-  const labelSvg = labels.map((lb,i)=>`<text x="${x(i).toFixed(1)}" y="${H-8}" font-size="9" fill="var(--textSecondary)" text-anchor="middle">${lb}</text>`).join('');
+  const labelSvg = labels.map((lb,i)=>
+    `<text x="0" y="0" font-size="9.5" fill="var(--textSecondary)" text-anchor="end" transform="translate(${x(i).toFixed(1)},${H-padB+14}) rotate(-40)">${lb}</text>`
+  ).join('');
 
-  const pontinhos = (pontos, cor) => pontos.map(p=>`<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="2.5" fill="${cor}"/>`).join('');
+  const pontinhos = (pontos, cor, labels, valores, sufixo) => pontos.map((p,i)=>
+    `<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="2.5" fill="${cor}"><title>${labels[i]}: ${valores[i].toFixed(2)}% ${sufixo}</title></circle>`
+  ).join('');
 
   document.getElementById('exposicao-chart').innerHTML = `
     <div style="display:flex; gap:16px; margin-bottom:8px; font-size:11px; color:var(--textSecondary); flex-wrap:wrap;">
@@ -1673,14 +1696,14 @@ function renderGraficoExposicao(linhas, projecaoQtd, projecaoValor){
       <span style="display:flex; align-items:center; gap:5px;"><span style="width:9px; height:9px; border-radius:2px; background:#F3A42E;"></span>% valor</span>
       ${projecaoQtd.length ? '<span style="color:var(--textMuted);">(tracejado = projeção; * = mês projetado)</span>' : ''}
     </div>
-    <svg viewBox="0 0 ${W} ${H}" style="width:100%; height:auto; max-height:240px;">
+    <svg viewBox="0 0 ${W} ${H}" style="width:100%; height:auto; max-height:280px;">
       ${gridLines}
       <path d="${toPath(pontosQtdReal)}" fill="none" stroke="var(--konsiTeal)" stroke-width="2"/>
       <path d="${toPath(pontosQtdProj)}" fill="none" stroke="var(--konsiTeal)" stroke-width="2" stroke-dasharray="5,4"/>
       <path d="${toPath(pontosValReal)}" fill="none" stroke="#F3A42E" stroke-width="2"/>
       <path d="${toPath(pontosValProj)}" fill="none" stroke="#F3A42E" stroke-width="2" stroke-dasharray="5,4"/>
-      ${pontinhos(pontosQtdReal, 'var(--konsiTeal)')}
-      ${pontinhos(pontosValReal, '#F3A42E')}
+      ${pontinhos(pontosQtdReal, 'var(--konsiTeal)', linhas.map(l=>labelCurto(l.mes+'-01')), linhas.map(l=>l.pctQtd), '(quantidade)')}
+      ${pontinhos(pontosValReal, '#F3A42E', linhas.map(l=>labelCurto(l.mes+'-01')), linhas.map(l=>l.pctValor), '(valor)')}
       ${labelSvg}
     </svg>
   `;
