@@ -707,6 +707,77 @@
   </div>
 </div>
 
+<!-- ============ MODAL: QUESTIONÁRIO GUIADO DE CLASSIFICAÇÃO DE RISCO ============ -->
+<div class="modal-overlay" id="modal-questionario-risco">
+  <div class="modal wide">
+    <div class="modal-head"><h3>Classificar risco — questionário guiado</h3><button onclick="closeModal('modal-questionario-risco')">✕</button></div>
+    <p class="field-note" style="margin-top:-6px;">Baseado na metodologia interna de classificação de risco da Konsi. Responda em ordem — cada pergunta só aparece se for relevante diante da resposta anterior.</p>
+
+    <div id="qr-q1" class="panel" style="margin-bottom:10px;">
+      <label style="font-weight:600;">1. Já existe sentença desfavorável neste processo (mesmo cabendo recurso), ou identificamos um erro flagrante de alto valor?</label>
+      <div style="margin-top:8px; display:flex; gap:18px;">
+        <label><input type="radio" name="qr1" value="SIM" onchange="atualizarQuestionarioRisco()"> Sim</label>
+        <label><input type="radio" name="qr1" value="NAO" onchange="atualizarQuestionarioRisco()"> Não</label>
+      </div>
+    </div>
+
+    <div id="qr-q2" class="panel" style="margin-bottom:10px; display:none;">
+      <label style="font-weight:600;">2. Identificamos falha operacional da Konsi — erro de digitação, informação incorreta ao cliente, ou prática comercial própria (não exigida pelo banco) que afronte a regulação, incluindo ter condicionado por conta própria a venda do crédito a um seguro?</label>
+      <div style="margin-top:8px; display:flex; gap:18px;">
+        <label><input type="radio" name="qr2" value="SIM" onchange="atualizarQuestionarioRisco()"> Sim</label>
+        <label><input type="radio" name="qr2" value="NAO" onchange="atualizarQuestionarioRisco()"> Não</label>
+      </div>
+    </div>
+
+    <div id="qr-q3" class="panel" style="margin-bottom:10px; display:none;">
+      <label style="font-weight:600;">3. O banco exigia a contratação de um seguro sem opção de desmarcar no sistema dele (limitação do banco, não da Konsi)?</label>
+      <div style="margin-top:8px; display:flex; gap:18px;">
+        <label><input type="radio" name="qr3" value="SIM" onchange="atualizarQuestionarioRisco()"> Sim</label>
+        <label><input type="radio" name="qr3" value="NAO" onchange="atualizarQuestionarioRisco()"> Não</label>
+      </div>
+    </div>
+
+    <div id="qr-q3b" class="panel" style="margin-bottom:10px; display:none;">
+      <label style="font-weight:600;">3b. A Konsi informou isso ao cliente durante a negociação?</label>
+      <div style="margin-top:8px; display:flex; gap:18px;">
+        <label><input type="radio" name="qr3b" value="SIM" onchange="atualizarQuestionarioRisco()"> Sim, informou</label>
+        <label><input type="radio" name="qr3b" value="NAO" onchange="atualizarQuestionarioRisco()"> Não informou</label>
+      </div>
+    </div>
+
+    <div id="qr-q4" class="panel" style="margin-bottom:10px; display:none;">
+      <label style="font-weight:600;">4. O questionamento contesta a celebração do contrato (ex: cliente alega não ter contratado)?</label>
+      <div style="margin-top:8px; display:flex; gap:18px;">
+        <label><input type="radio" name="qr4" value="SIM" onchange="atualizarQuestionarioRisco()"> Sim, contesta a celebração</label>
+        <label><input type="radio" name="qr4" value="NAO" onchange="atualizarQuestionarioRisco()"> Não, contesta condições do contrato (juros, amortização, superendividamento etc.)</label>
+      </div>
+    </div>
+
+    <div id="qr-q4a" class="panel" style="margin-bottom:10px; display:none;">
+      <label style="font-weight:600;">4a. Temos evidência além do contrato formalizado (histórico de conversas, gravação de chamada, etc.)?</label>
+      <div style="margin-top:8px; display:flex; gap:18px;">
+        <label><input type="radio" name="qr4a" value="SIM" onchange="atualizarQuestionarioRisco()"> Sim</label>
+        <label><input type="radio" name="qr4a" value="NAO" onchange="atualizarQuestionarioRisco()"> Não, só o contrato formalizado</label>
+      </div>
+    </div>
+
+    <div id="qr-q4b" class="panel" style="margin-bottom:10px; display:none;">
+      <label style="font-weight:600;">4b. É passível de fácil contraposição — temos documento que resolve a alegação de forma direta e objetiva (não só um indício indireto)?</label>
+      <div style="margin-top:8px; display:flex; gap:18px;">
+        <label><input type="radio" name="qr4b" value="SIM" onchange="atualizarQuestionarioRisco()"> Sim</label>
+        <label><input type="radio" name="qr4b" value="NAO" onchange="atualizarQuestionarioRisco()"> Não</label>
+      </div>
+    </div>
+
+    <div id="qr-resultado" style="display:none; margin-top:6px;"></div>
+
+    <div class="form-actions">
+      <button class="btn-secondary" onclick="closeModal('modal-questionario-risco')">Cancelar</button>
+      <button class="btn-primary" style="width:auto" id="qr-btn-aplicar" onclick="aplicarResultadoQuestionarioRisco()" disabled>Aplicar esta classificação</button>
+    </div>
+  </div>
+</div>
+
 <!-- ============ MODAL: DETALHE DO PROCESSO ============ -->
 <div class="modal-overlay" id="modal-detalhe">
   <div class="modal wide">
@@ -750,6 +821,8 @@
                 <option value="BAIXO">Baixo</option><option value="MEDIO">Médio</option>
                 <option value="ALTO">Alto</option><option value="CRITICO">Crítico</option>
               </select>
+              <button type="button" class="btn-ghost" style="margin-top:6px; font-size:11px;" onclick="abrirQuestionarioRisco()">Classificar com o questionário guiado</button>
+              <div id="det-criterio-risco-info" style="font-size:11px; color:var(--textSecondary); margin-top:4px;"></div>
             </div>
             <div><label>Valor em risco (R$)</label><input id="det-valor-risco" type="number" step="0.01"></div>
           </div>
@@ -1979,6 +2052,106 @@ const LABEL_EVIDENCIAS = {
   COM_EVIDENCIA_UTILIZADA: 'Com evidência — utilizada pelo banco',
 };
 
+// ---------------- QUESTIONÁRIO GUIADO DE CLASSIFICAÇÃO DE RISCO ----------------
+// Implementa a árvore de decisão descrita no documento "Metodologia de
+// Classificação de Risco" da Konsi. Isso não substitui o julgamento
+// jurídico — as perguntas continuam exigindo que uma pessoa analise o
+// processo; o que o questionário garante é que a MESMA regra escrita seja
+// aplicada da mesma forma por qualquer pessoa, e que o raciocínio fique
+// registrado (campo criterio_risco_respostas), não só o resultado final.
+let ultimoResultadoQuestionarioRisco = null;
+
+function valorRadio(nome){
+  const el = document.querySelector(`input[name="${nome}"]:checked`);
+  return el ? el.value : null;
+}
+
+function abrirQuestionarioRisco(){
+  // Reseta tudo toda vez que abre, pra não herdar resposta de uma análise anterior.
+  ['qr1','qr2','qr3','qr3b','qr4','qr4a','qr4b'].forEach(nome=>{
+    document.querySelectorAll(`input[name="${nome}"]`).forEach(el=> el.checked = false);
+  });
+  ['qr-q2','qr-q3','qr-q3b','qr-q4','qr-q4a','qr-q4b'].forEach(id=> document.getElementById(id).style.display='none');
+  document.getElementById('qr-resultado').style.display = 'none';
+  document.getElementById('qr-btn-aplicar').disabled = true;
+  ultimoResultadoQuestionarioRisco = null;
+  openModal('modal-questionario-risco');
+}
+
+function mostrarResultadoQuestionario(risco, motivo){
+  ultimoResultadoQuestionarioRisco = { risco, motivo };
+  const cores = { BAIXO:'sucesso', MEDIO:'alerta', ALTO:'erro', CRITICO:'erro' };
+  document.getElementById('qr-resultado').style.display = 'block';
+  document.getElementById('qr-resultado').innerHTML = `
+    <div class="panel" style="background:var(--${cores[risco]}Bg); border-color:var(--${cores[risco]});">
+      <div style="font-size:11px; color:var(--textSecondary); margin-bottom:4px;">Classificação sugerida</div>
+      <div style="font-size:20px; font-weight:700;" class="badge badge-${risco}">${risco}</div>
+      <div style="font-size:12px; color:var(--textSecondary); margin-top:8px;">${motivo}</div>
+    </div>`;
+  document.getElementById('qr-btn-aplicar').disabled = false;
+}
+
+function esconderResultadoQuestionario(){
+  ultimoResultadoQuestionarioRisco = null;
+  document.getElementById('qr-resultado').style.display = 'none';
+  document.getElementById('qr-btn-aplicar').disabled = true;
+}
+
+function atualizarQuestionarioRisco(){
+  const q1 = valorRadio('qr1');
+  const q2 = valorRadio('qr2');
+  const q3 = valorRadio('qr3');
+  const q3b = valorRadio('qr3b');
+  const q4 = valorRadio('qr4');
+  const q4a = valorRadio('qr4a');
+  const q4b = valorRadio('qr4b');
+
+  // Esconde tudo depois do ponto que ainda não foi respondido, e recalcula
+  // do zero a cada mudança — evita ficar com pergunta "fantasma" visível
+  // depois que alguém troca uma resposta anterior.
+  const mostrar = (id, condicao) => document.getElementById(id).style.display = condicao ? 'block' : 'none';
+
+  mostrar('qr-q2', q1==='NAO');
+  mostrar('qr-q3', q1==='NAO' && q2==='NAO');
+  mostrar('qr-q3b', q1==='NAO' && q2==='NAO' && q3==='SIM');
+  const chegouAQ4 = q1==='NAO' && q2==='NAO' && (q3==='NAO' || (q3==='SIM' && q3b==='SIM'));
+  mostrar('qr-q4', chegouAQ4);
+  mostrar('qr-q4a', chegouAQ4 && q4==='SIM');
+  mostrar('qr-q4b', chegouAQ4 && q4==='NAO');
+
+  if(q1==='SIM'){
+    mostrarResultadoQuestionario('CRITICO', 'Já existe sentença desfavorável ou erro flagrante de alto valor identificado.');
+  } else if(q1==='NAO' && q2==='SIM'){
+    mostrarResultadoQuestionario('ALTO', 'Falha operacional identificada, diretamente atribuível à Konsi.');
+  } else if(q1==='NAO' && q2==='NAO' && q3==='SIM' && q3b==='NAO'){
+    mostrarResultadoQuestionario('MEDIO', 'Seguro exigido pelo banco (fora do controle da Konsi), mas não informado ao cliente na negociação — falha de transparência, não de operação.');
+  } else if(chegouAQ4 && q4==='SIM' && q4a==='SIM'){
+    mostrarResultadoQuestionario('BAIXO', 'Contesta a celebração do contrato, mas há evidência além do contrato formalizado (ex: histórico de conversas) — fácil contraposição.');
+  } else if(chegouAQ4 && q4==='SIM' && q4a==='NAO'){
+    mostrarResultadoQuestionario('MEDIO', 'Contesta a celebração do contrato e a comprovação se limita ao contrato formalizado, sem evidência adicional — situação "50/50".');
+  } else if(chegouAQ4 && q4==='NAO' && q4b==='SIM'){
+    mostrarResultadoQuestionario('BAIXO', 'Contesta condição do contrato (não a celebração), com evidência que resolve a alegação de forma direta.');
+  } else if(chegouAQ4 && q4==='NAO' && q4b==='NAO'){
+    mostrarResultadoQuestionario('MEDIO', 'Contesta condição do contrato, mas sem uma evidência que resolva a alegação de forma direta e objetiva — recomenda-se revisão adicional.');
+  } else {
+    esconderResultadoQuestionario();
+  }
+}
+
+function aplicarResultadoQuestionarioRisco(){
+  if(!ultimoResultadoQuestionarioRisco) return;
+  document.getElementById('det-risco').value = ultimoResultadoQuestionarioRisco.risco;
+  const respostas = {
+    qr1: valorRadio('qr1'), qr2: valorRadio('qr2'), qr3: valorRadio('qr3'),
+    qr3b: valorRadio('qr3b'), qr4: valorRadio('qr4'), qr4a: valorRadio('qr4a'), qr4b: valorRadio('qr4b'),
+    resultado: ultimoResultadoQuestionarioRisco.risco, motivo: ultimoResultadoQuestionarioRisco.motivo,
+  };
+  window.__criterioRiscoPendente = respostas; // salvo junto no próximo "Salvar dados do processo"
+  document.getElementById('det-criterio-risco-info').innerHTML =
+    `<span style="color:var(--sucesso);">✓ Critério aplicado via questionário</span> — será salvo ao clicar em "Salvar dados do processo".`;
+  closeModal('modal-questionario-risco');
+}
+
 async function salvarNovoProcesso(){
   const payload = {
     numero_processo: document.getElementById('np-numero').value.trim(),
@@ -2301,7 +2474,7 @@ function renderDetView(p){
       ${fc('Evidências enviadas ao banco', `<span class="badge badge-${p.situacao_evidencias||'AGUARDANDO_CONTESTACAO'}">${LABEL_EVIDENCIAS[p.situacao_evidencias]||LABEL_EVIDENCIAS.AGUARDANDO_CONTESTACAO}</span>`)}
       ${fc('Origem do cadastro', p.origem_cadastro==='IMPORTACAO_CSV' ? '<span class="badge-csv">Importação CSV</span>' : 'Manual')}
       ${fc('Cadastrado em', fmtDate((p.criado_em||'').slice(0,10)))}
-      ${fc('Classificação de risco', `<span class="badge badge-${p.classificacao_risco}">${p.classificacao_risco}</span>`)}
+      ${fc('Classificação de risco', `<span class="badge badge-${p.classificacao_risco}">${p.classificacao_risco}</span>${p.criterio_risco_respostas?.motivo ? `<div style="font-size:11px; color:var(--textSecondary); margin-top:4px; font-weight:400;">${p.criterio_risco_respostas.motivo}</div>` : ''}`)}
       ${fc('Resultado', `<span class="badge badge-${p.resultado}">${RESULTADO_LABEL[p.resultado]||p.resultado}</span>`)}
       ${fc('Status do processo', `<span class="badge badge-${p.status_processo||'ATIVO'}">${(p.status_processo||'ATIVO')==='ATIVO'?'Ativo':'Arquivado/Extinto'}</span>`)}
       ${fc('Situação atual', p.situacao_atual||'—')}
@@ -2346,6 +2519,10 @@ function abrirEdicaoProcesso(){
   document.getElementById('det-resumo-simples').value = p.resumo_simples || '';
   document.getElementById('det-resultado').value = p.resultado || 'EM_ANDAMENTO';
   document.getElementById('det-status-processo').value = p.status_processo || 'ATIVO';
+  window.__criterioRiscoPendente = null;
+  document.getElementById('det-criterio-risco-info').innerHTML = p.criterio_risco_respostas
+    ? `Último critério aplicado: <b>${p.criterio_risco_respostas.motivo || '—'}</b> (${p.criterio_risco_atualizado_em ? new Date(p.criterio_risco_atualizado_em).toLocaleDateString('pt-BR') : ''})`
+    : '';
   document.getElementById('det-edit-form').style.display = 'block';
 }
 
@@ -2373,8 +2550,13 @@ async function salvarAtualizacaoProcesso(){
     resultado: document.getElementById('det-resultado').value,
     status_processo: document.getElementById('det-status-processo').value
   };
+  if(window.__criterioRiscoPendente){
+    payload.criterio_risco_respostas = window.__criterioRiscoPendente;
+    payload.criterio_risco_atualizado_em = new Date().toISOString();
+  }
   const { error } = await sb.from('processos_judiciais').update(payload).eq('id', processoAtualId);
   if(error){ toast('Erro: '+error.message+' (só administradores podem editar um processo)'); return; }
+  window.__criterioRiscoPendente = null;
   toast('Dados do processo atualizados.');
   await carregarProcessos(); await carregarDashboard();
   abrirDetalhe(processoAtualId);
