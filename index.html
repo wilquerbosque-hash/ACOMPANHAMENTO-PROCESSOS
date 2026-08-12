@@ -802,9 +802,9 @@
       <div>
         <div class="section-label"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>Dados do processo</div>
         <div id="det-view" style="font-size:13px; line-height:1.9;"></div>
-        <div id="det-admin-actions" style="display:none; gap:8px; margin:10px 0 4px;">
+        <div id="det-actions" style="display:flex; gap:8px; margin:10px 0 4px;">
           <button class="btn-secondary" onclick="abrirEdicaoProcesso()">Editar</button>
-          <button class="btn-danger" onclick="excluirProcesso()">Excluir processo</button>
+          <button class="btn-danger" id="det-btn-excluir" style="display:none;" onclick="excluirProcesso()">Excluir processo</button>
         </div>
 
         <div id="det-edit-form" style="display:none;">
@@ -888,15 +888,17 @@
           </div>
         </div>
 
-        <div class="section-label"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M3 10h18"/><path d="m9 16 2 2 4-4"/></svg>Nova tarefa de acompanhamento</div>
-        <div class="form-row">
-          <div><label>Título</label><input id="tarefa-titulo" placeholder="Acompanhar processo..."></div>
-          <div><label>Prazo</label><input id="tarefa-prazo" type="date"></div>
+        <div id="det-nova-tarefa-wrap" style="display:none;">
+          <div class="section-label"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M3 10h18"/><path d="m9 16 2 2 4-4"/></svg>Nova tarefa de acompanhamento</div>
+          <div class="form-row">
+            <div><label>Título</label><input id="tarefa-titulo" placeholder="Acompanhar processo..."></div>
+            <div><label>Prazo</label><input id="tarefa-prazo" type="date"></div>
+          </div>
+          <div class="form-row single">
+            <div><label>Responsável (quem vai realizar)</label><select id="tarefa-responsavel"></select></div>
+          </div>
+          <button class="btn-secondary" onclick="criarTarefa()">Criar tarefa</button>
         </div>
-        <div class="form-row single">
-          <div><label>Responsável (quem vai realizar)</label><select id="tarefa-responsavel"></select></div>
-        </div>
-        <button class="btn-secondary" onclick="criarTarefa()">Criar tarefa</button>
       </div>
 
       <div>
@@ -2546,7 +2548,8 @@ async function abrirDetalhe(id){
 
   renderDetView(p);
   document.getElementById('det-edit-form').style.display = 'none';
-  document.getElementById('det-admin-actions').style.display = currentUserIsAdmin ? 'flex' : 'none';
+  document.getElementById('det-btn-excluir').style.display = currentUserIsAdmin ? 'inline-block' : 'none';
+  document.getElementById('det-nova-tarefa-wrap').style.display = currentUserIsAdmin ? 'block' : 'none';
 
   document.getElementById('mov-data').value = new Date().toISOString().slice(0,10);
   document.getElementById('tarefa-prazo').value = '';
