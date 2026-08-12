@@ -14,3 +14,5 @@ project_id = "konsi-processos-judiciais"
 # consegue disparar a sincronização, porque é o próprio index.html que chama essa
 # função passando o token de quem acabou de logar.
 verify_jwt = true
+[functions.admin-usuarios]
+verify_jwt = true
