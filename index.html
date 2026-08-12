@@ -567,13 +567,12 @@
       <div class="page-head">
         <div><h2>Acompanhamentos</h2><p>Tarefas de acompanhamento vinculadas a cada processo</p></div>
       </div>
+      <div style="display:flex; gap:8px; margin-bottom:16px;">
+        <button class="btn-primary" id="tab-tarefas-aberto" style="width:auto;" onclick="mudarAbaTarefas('aberto')">Em aberto</button>
+        <button class="btn-secondary" id="tab-tarefas-concluida" style="width:auto;" onclick="mudarAbaTarefas('concluida')">Concluídas</button>
+      </div>
       <div class="filters">
-        <select id="f-tarefa-status">
-          <option value="">Todos os status</option>
-          <option value="PENDENTE">Pendente</option>
-          <option value="ATRASADA">Atrasada</option>
-          <option value="CONCLUIDA">Concluída</option>
-        </select>
+        <select id="f-tarefa-responsavel"><option value="">Todos os responsáveis</option></select>
       </div>
       <div class="panel">
         <div class="table-wrap"><table id="tbl-tarefas">
@@ -629,7 +628,7 @@
     </div>
     <div class="form-row">
       <div><label>Motivo da ação</label>
-        <select id="np-motivo" onchange="tratarNovoValorDominio('np-motivo','MOTIVO')"></select>
+        <select id="np-motivo" onchange="tratarNovoValorDominio('np-motivo','MOTIVO'); aplicarRegraSuperendividamento('np')"></select>
       </div>
       <div><label>Valor da operação (R$)</label><input id="np-valor-operacao" type="text" inputmode="decimal" placeholder="Ex: 5.000,00"></div>
     </div>
@@ -821,7 +820,7 @@
           </div>
           <div class="form-row">
             <div><label>Tipo de operação</label><select id="det-operacao" onchange="tratarNovoValorDominio('det-operacao','OPERACAO')"></select></div>
-            <div><label>Motivo da ação</label><select id="det-motivo" onchange="tratarNovoValorDominio('det-motivo','MOTIVO')"></select></div>
+            <div><label>Motivo da ação</label><select id="det-motivo" onchange="tratarNovoValorDominio('det-motivo','MOTIVO'); aplicarRegraSuperendividamento('det')"></select></div>
           </div>
           <div class="form-row">
             <div><label>Valor da operação (R$)</label><input id="det-valor-operacao" type="text" inputmode="decimal" placeholder="Ex: 5.000,00"></div>
@@ -913,6 +912,9 @@
 
         <div class="section-label"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6h11"/><path d="M9 12h11"/><path d="M9 18h11"/><path d="M4 6h.01"/><path d="M4 12h.01"/><path d="M4 18h.01"/></svg>Tarefas deste processo</div>
         <div id="det-tarefas"></div>
+
+        <div class="section-label"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M9 15h6"/><path d="M9 11h6"/></svg>Log de alterações do cadastro</div>
+        <ul class="timeline" id="det-log-edicoes"></ul>
       </div>
     </div>
   </div>
@@ -1892,12 +1894,33 @@ function abrirDetalheBanco(){
   openModal('modal-banco');
 }
 
+let abaTarefasAtual = 'aberto';
+function mudarAbaTarefas(aba){
+  abaTarefasAtual = aba;
+  document.getElementById('tab-tarefas-aberto').className = aba==='aberto' ? 'btn-primary' : 'btn-secondary';
+  document.getElementById('tab-tarefas-concluida').className = aba==='concluida' ? 'btn-primary' : 'btn-secondary';
+  document.getElementById('tab-tarefas-aberto').style.width = 'auto';
+  document.getElementById('tab-tarefas-concluida').style.width = 'auto';
+  carregarTarefas();
+}
+
 async function carregarTarefas(){
   const { data, error } = await sb.from('vw_tarefas_com_processo').select('*');
   if(error){ toast('Erro ao carregar tarefas: '+error.message); return; }
-  const statusFiltro = document.getElementById('f-tarefa-status').value;
-  document.getElementById('f-tarefa-status').onchange = carregarTarefas;
-  const filtrado = statusFiltro ? data.filter(t=>t.status===statusFiltro) : data;
+
+  if(!document.getElementById('f-tarefa-responsavel').dataset.preenchido){
+    document.getElementById('f-tarefa-responsavel').innerHTML =
+      '<option value="">Todos os responsáveis</option>' + opcoesResponsavelHtml(null);
+    document.getElementById('f-tarefa-responsavel').dataset.preenchido = '1';
+  }
+  document.getElementById('f-tarefa-responsavel').onchange = carregarTarefas;
+  const responsavelFiltro = document.getElementById('f-tarefa-responsavel').value;
+
+  const filtrado = data.filter(t=>{
+    const bateAba = abaTarefasAtual==='concluida' ? t.status==='CONCLUIDA' : t.status!=='CONCLUIDA';
+    const bateResponsavel = !responsavelFiltro || t.responsavel_id===responsavelFiltro;
+    return bateAba && bateResponsavel;
+  });
   document.querySelector('#tbl-tarefas tbody').innerHTML = filtrado.length ? filtrado.map(t=>{
     const souResponsavel = t.responsavel_id === currentUser.id;
     const tituloTarefa = souResponsavel
@@ -2102,6 +2125,22 @@ function preencherCampoEvidencias(prefixo, valor){
   atualizarCampoEvidenciasUtilizada(prefixo);
 }
 
+// Superendividamento: são casos em que a Konsi não questiona a "boa venda" —
+// o cliente só está endividado e quer renegociar. Não faz sentido computar
+// valor em risco nesses casos, então ele é zerado e travado automaticamente.
+function aplicarRegraSuperendividamento(prefixo){
+  const motivo = document.getElementById(`${prefixo}-motivo`).value;
+  const campoValor = document.getElementById(`${prefixo}-valor-risco`);
+  if(motivo === 'SUPERENDIVIDAMENTO'){
+    campoValor.value = '0,00';
+    campoValor.disabled = true;
+    campoValor.title = 'Superendividamento não questiona a "boa venda" — valor em risco fica zerado automaticamente.';
+  } else {
+    campoValor.disabled = false;
+    campoValor.title = '';
+  }
+}
+
 const LABEL_EVIDENCIAS = {
   AGUARDANDO_CONTESTACAO: 'Aguardando contestação',
   SEM_EVIDENCIA: 'Sem evidência',
@@ -2223,7 +2262,7 @@ async function salvarNovoProcesso(){
     data_operacao: document.getElementById('np-data-operacao').value || null,
     data_ajuizamento: document.getElementById('np-data-ajuizamento').value || null,
     classificacao_risco: 'BAIXO', // sempre começa Baixo — reclassificação só pelo questionário guiado, depois de cadastrado
-    valor_risco: parseNumeroBR(document.getElementById('np-valor-risco').value),
+    valor_risco: document.getElementById('np-motivo').value==='SUPERENDIVIDAMENTO' ? 0 : parseNumeroBR(document.getElementById('np-valor-risco').value),
     situacao_atual: document.getElementById('np-situacao').value.trim() || 'AGUARDANDO CITAÇÃO/CIÊNCIA',
     resumo_simples: document.getElementById('np-resumo-simples').value.trim() || null,
     situacao_evidencias: calcularSituacaoEvidencias('np'),
@@ -2424,7 +2463,9 @@ function processarLinhasCsv(linhas){
         // risco — a classificação só é feita pelo questionário guiado, dentro
         // do sistema, nunca por valor externo importado.
         classificacao_risco: 'BAIXO',
-        valor_risco: parseFloat((linha.valor_risco||'').replace(',','.')) || null,
+        // Superendividamento não questiona a "boa venda" — valor em risco
+        // sempre zerado, mesmo que a planilha traga outro valor na coluna.
+        valor_risco: (linha.motivo||'').trim().toUpperCase()==='SUPERENDIVIDAMENTO' ? 0 : (parseFloat((linha.valor_risco||'').replace(',','.')) || null),
         // Nunca deixar undefined aqui: numa inserção em lote (várias linhas de
         // uma vez), colunas omitidas em algumas linhas viram NULL explícito
         // em vez de aplicar o valor padrão do banco — e situacao_atual não
@@ -2569,7 +2610,47 @@ async function abrirDetalhe(id){
 
   await carregarTimeline(id);
   await carregarTarefasDoProcesso(id);
+  await carregarLogEdicoesProcesso(id);
   openModal('modal-detalhe');
+}
+
+const LABEL_CAMPO_LOG = {
+  nome_cliente: 'nome do cliente', ade: 'ADE', tribunal: 'tribunal', banco: 'banco',
+  convenio: 'convênio', tipo_operacao: 'tipo de operação', motivo: 'motivo',
+  valor_operacao: 'valor da operação', data_operacao: 'data da operação',
+  data_ajuizamento: 'data de ajuizamento', valor_risco: 'valor em risco',
+  situacao_atual: 'situação atual', resumo_simples: 'resumo da situação',
+  resultado: 'resultado do processo', status_processo: 'status do processo',
+  situacao_evidencias: 'evidências enviadas ao banco',
+};
+
+function truncarValorLog(v){
+  if(v==null || v==='') return '(vazio)';
+  const s = String(v);
+  return s.length > 40 ? s.slice(0,40)+'…' : s;
+}
+
+async function carregarLogEdicoesProcesso(processoId){
+  const el = document.getElementById('det-log-edicoes');
+  const { data, error } = await sb.from('logs_auditoria_processos')
+    .select('criado_em, detalhe, usuarios_perfil(nome_exibicao)')
+    .eq('processo_id', processoId)
+    .eq('acao', 'EDICAO_CADASTRO')
+    .order('criado_em', { ascending: false })
+    .limit(30);
+  if(error || !data?.length){
+    el.innerHTML = emptyState('Nenhuma alteração registrada ainda', '');
+    return;
+  }
+  el.innerHTML = data.map(l=>{
+    const campo = LABEL_CAMPO_LOG[l.detalhe?.campo] || l.detalhe?.campo || 'campo';
+    const quem = l.usuarios_perfil?.nome_exibicao || 'Sistema (DataJud)';
+    return `<li>
+      <div class="tdate">${new Date(l.criado_em).toLocaleString('pt-BR')}</div>
+      <div class="tdesc">Alterou <b>${campo}</b>: ${truncarValorLog(l.detalhe?.de)} → ${truncarValorLog(l.detalhe?.para)}</div>
+      <div class="tresp">${quem}</div>
+    </li>`;
+  }).join('');
 }
 
 function abrirEdicaoProcesso(){
@@ -2586,6 +2667,7 @@ function abrirEdicaoProcesso(){
   document.getElementById('det-data-ajuizamento').value = p.data_ajuizamento || '';
   document.getElementById('det-risco').value = p.classificacao_risco;
   document.getElementById('det-valor-risco').value = fmtNumeroBR(p.valor_risco);
+  aplicarRegraSuperendividamento('det');
   document.getElementById('det-situacao').value = p.situacao_atual || '';
   preencherCampoEvidencias('det', p.situacao_evidencias || 'AGUARDANDO_CONTESTACAO');
   document.getElementById('det-resumo-simples').value = p.resumo_simples || '';
@@ -2615,7 +2697,7 @@ async function salvarAtualizacaoProcesso(){
     data_operacao: document.getElementById('det-data-operacao').value || null,
     data_ajuizamento: document.getElementById('det-data-ajuizamento').value || null,
     classificacao_risco: document.getElementById('det-risco').value,
-    valor_risco: parseNumeroBR(document.getElementById('det-valor-risco').value),
+    valor_risco: document.getElementById('det-motivo').value==='SUPERENDIVIDAMENTO' ? 0 : parseNumeroBR(document.getElementById('det-valor-risco').value),
     situacao_atual: document.getElementById('det-situacao').value.trim(),
     situacao_evidencias: calcularSituacaoEvidencias('det'),
     resumo_simples: document.getElementById('det-resumo-simples').value.trim() || null,
@@ -2746,22 +2828,9 @@ async function excluirTarefa(tarefaId, processoId){
 
 // Concluir tarefa: pede a movimentação resultante do acompanhamento e fecha o ciclo
 async function concluirTarefa(tarefaId, processoId){
-  const descricao = prompt('Descreva a movimentação/atualização identificada ao concluir este acompanhamento:');
-  if(descricao===null) return;
-  const hoje = new Date().toISOString().slice(0,10);
-  const p = processosCache.find(x=>x.id===processoId) || {};
-
-  let movId = null;
-  if(descricao.trim()){
-    const { data: mov, error: movErr } = await sb.from('movimentacoes_processo').insert({
-      processo_id: processoId, data_movimentacao: hoje, descricao: descricao.trim(),
-      risco_no_momento: p.classificacao_risco, situacao_no_momento: p.situacao_atual,
-      responsavel_id: currentUser.id
-    }).select().single();
-    if(!movErr) movId = mov.id;
-  }
+  if(!confirm('Marcar esta tarefa como concluída?')) return;
   const { error } = await sb.from('tarefas_acompanhamento').update({
-    status:'CONCLUIDA', concluido_em: new Date().toISOString(), movimentacao_gerada_id: movId
+    status:'CONCLUIDA', concluido_em: new Date().toISOString()
   }).eq('id', tarefaId);
   if(error){ toast('Erro: '+error.message); return; }
   toast('Acompanhamento concluído.');
