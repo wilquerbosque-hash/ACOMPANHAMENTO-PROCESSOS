@@ -2644,7 +2644,7 @@ async function carregarLogEdicoesProcesso(processoId){
   }
   el.innerHTML = data.map(l=>{
     const campo = LABEL_CAMPO_LOG[l.detalhe?.campo] || l.detalhe?.campo || 'campo';
-    const quem = l.usuarios_perfil?.nome_exibicao || 'Sistema (DataJud)';
+    const quem = l.usuarios_perfil?.nome_exibicao || 'Sistema (automático ou correção em lote)';
     return `<li>
       <div class="tdate">${new Date(l.criado_em).toLocaleString('pt-BR')}</div>
       <div class="tdesc">Alterou <b>${campo}</b>: ${truncarValorLog(l.detalhe?.de)} → ${truncarValorLog(l.detalhe?.para)}</div>
