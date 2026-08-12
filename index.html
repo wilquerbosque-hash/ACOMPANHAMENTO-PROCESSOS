@@ -631,14 +631,14 @@
       <div><label>Motivo da ação</label>
         <select id="np-motivo" onchange="tratarNovoValorDominio('np-motivo','MOTIVO')"></select>
       </div>
-      <div><label>Valor da operação (R$)</label><input id="np-valor-operacao" type="number" step="0.01"></div>
+      <div><label>Valor da operação (R$)</label><input id="np-valor-operacao" type="text" inputmode="decimal" placeholder="Ex: 5.000,00"></div>
     </div>
     <div class="form-row">
       <div><label>Data da operação</label><input id="np-data-operacao" type="date"></div>
       <div><label>Data de ajuizamento (se conhecida)</label><input id="np-data-ajuizamento" type="date"></div>
     </div>
     <div class="form-row single">
-      <div><label>Valor em risco (R$)</label><input id="np-valor-risco" type="number" step="0.01"></div>
+      <div><label>Valor em risco (R$)</label><input id="np-valor-risco" type="text" inputmode="decimal" placeholder="Ex: 5.000,00"></div>
       <p class="field-note" style="margin-top:4px;">O processo começa classificado como <b>Baixo</b> por padrão. A reclassificação de risco só é feita depois, pelo questionário guiado (aba Processos → abrir o processo → Editar).</p>
     </div>
     <div class="form-row single">
@@ -824,7 +824,7 @@
             <div><label>Motivo da ação</label><select id="det-motivo" onchange="tratarNovoValorDominio('det-motivo','MOTIVO')"></select></div>
           </div>
           <div class="form-row">
-            <div><label>Valor da operação (R$)</label><input id="det-valor-operacao" type="number" step="0.01"></div>
+            <div><label>Valor da operação (R$)</label><input id="det-valor-operacao" type="text" inputmode="decimal" placeholder="Ex: 5.000,00"></div>
             <div><label>Data da operação</label><input id="det-data-operacao" type="date"></div>
           </div>
           <div class="form-row single"><div><label>Data de ajuizamento</label><input id="det-data-ajuizamento" type="date"></div></div>
@@ -839,7 +839,7 @@
               <button type="button" class="btn-primary" style="margin-top:6px; font-size:12px; width:auto;" onclick="abrirQuestionarioRisco()">Classificar com o questionário guiado</button>
               <div id="det-criterio-risco-info" style="font-size:11px; color:var(--textSecondary); margin-top:4px;"></div>
             </div>
-            <div><label>Valor em risco (R$)</label><input id="det-valor-risco" type="number" step="0.01"></div>
+            <div><label>Valor em risco (R$)</label><input id="det-valor-risco" type="text" inputmode="decimal" placeholder="Ex: 5.000,00"></div>
           </div>
           <div class="form-row single"><div><label>Situação atual</label><input id="det-situacao"></div></div>
           <div class="section-label"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3 4 6v6c0 5 4 8 8 9 4-1 8-4 8-9V6z"/><path d="m9 12 2 2 4-4"/></svg>Evidências enviadas ao banco</div>
@@ -961,6 +961,9 @@ function toast(msg){
   setTimeout(()=> t.style.display='none', 3000);
 }
 function fmtMoney(v){ if(v==null) return '—'; return Number(v).toLocaleString('pt-BR',{style:'currency',currency:'BRL'}); }
+// Igual ao fmtMoney, mas sem o "R$" — usado pra pré-preencher campos de valor
+// editáveis (o campo já mostra "(R$)" no rótulo, não precisa repetir).
+function fmtNumeroBR(v){ if(v==null || v==='') return ''; return Number(v).toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2}); }
 function fmtDate(d){ if(!d) return '—'; const [y,m,day]=d.split('-'); return `${day}/${m}/${y}`; }
 
 // ---------------- AUTH ----------------
@@ -2048,11 +2051,20 @@ async function salvarMetricaMensal(){
 
 // ---------------- NOVO PROCESSO ----------------
 function openNovoProcesso(){
+  // Limpa todo campo de texto/data/número/textarea do formulário — sem isso,
+  // o navegador mantém o que foi digitado no cadastro anterior.
+  ['np-numero','np-tribunal','np-nome','np-ade','np-valor-operacao','np-data-operacao',
+   'np-data-ajuizamento','np-valor-risco','np-situacao','np-resumo-simples'].forEach(id=>{
+    document.getElementById(id).value = '';
+  });
+  document.getElementById('np-evidencias-possui').value = 'AGUARDANDO_CONTESTACAO';
+  document.getElementById('np-evidencias-utilizada').value = 'NAO';
+  document.getElementById('np-evidencias-utilizada-wrap').style.display = 'none';
+
   preencherSelectDominio('np-banco','BANCO');
   preencherSelectDominio('np-convenio','CONVENIO');
   preencherSelectDominio('np-operacao','OPERACAO');
   preencherSelectDominio('np-motivo','MOTIVO');
-  document.getElementById('np-resumo-simples').value = '';
   openModal('modal-novo-processo');
 }
 
@@ -2202,11 +2214,11 @@ async function salvarNovoProcesso(){
     convenio: document.getElementById('np-convenio').value || null,
     tipo_operacao: document.getElementById('np-operacao').value || null,
     motivo: document.getElementById('np-motivo').value,
-    valor_operacao: document.getElementById('np-valor-operacao').value || null,
+    valor_operacao: parseNumeroBR(document.getElementById('np-valor-operacao').value),
     data_operacao: document.getElementById('np-data-operacao').value || null,
     data_ajuizamento: document.getElementById('np-data-ajuizamento').value || null,
     classificacao_risco: 'BAIXO', // sempre começa Baixo — reclassificação só pelo questionário guiado, depois de cadastrado
-    valor_risco: document.getElementById('np-valor-risco').value || null,
+    valor_risco: parseNumeroBR(document.getElementById('np-valor-risco').value),
     situacao_atual: document.getElementById('np-situacao').value.trim() || 'AGUARDANDO CITAÇÃO/CIÊNCIA',
     resumo_simples: document.getElementById('np-resumo-simples').value.trim() || null,
     situacao_evidencias: calcularSituacaoEvidencias('np'),
@@ -2555,11 +2567,11 @@ function abrirEdicaoProcesso(){
   preencherSelectDominio('det-convenio','CONVENIO', p.convenio);
   preencherSelectDominio('det-operacao','OPERACAO', p.tipo_operacao);
   preencherSelectDominio('det-motivo','MOTIVO', p.motivo);
-  document.getElementById('det-valor-operacao').value = p.valor_operacao || '';
+  document.getElementById('det-valor-operacao').value = fmtNumeroBR(p.valor_operacao);
   document.getElementById('det-data-operacao').value = p.data_operacao || '';
   document.getElementById('det-data-ajuizamento').value = p.data_ajuizamento || '';
   document.getElementById('det-risco').value = p.classificacao_risco;
-  document.getElementById('det-valor-risco').value = p.valor_risco || '';
+  document.getElementById('det-valor-risco').value = fmtNumeroBR(p.valor_risco);
   document.getElementById('det-situacao').value = p.situacao_atual || '';
   preencherCampoEvidencias('det', p.situacao_evidencias || 'AGUARDANDO_CONTESTACAO');
   document.getElementById('det-resumo-simples').value = p.resumo_simples || '';
@@ -2585,11 +2597,11 @@ async function salvarAtualizacaoProcesso(){
     convenio: document.getElementById('det-convenio').value || null,
     tipo_operacao: document.getElementById('det-operacao').value || null,
     motivo: document.getElementById('det-motivo').value,
-    valor_operacao: document.getElementById('det-valor-operacao').value || null,
+    valor_operacao: parseNumeroBR(document.getElementById('det-valor-operacao').value),
     data_operacao: document.getElementById('det-data-operacao').value || null,
     data_ajuizamento: document.getElementById('det-data-ajuizamento').value || null,
     classificacao_risco: document.getElementById('det-risco').value,
-    valor_risco: document.getElementById('det-valor-risco').value || null,
+    valor_risco: parseNumeroBR(document.getElementById('det-valor-risco').value),
     situacao_atual: document.getElementById('det-situacao').value.trim(),
     situacao_evidencias: calcularSituacaoEvidencias('det'),
     resumo_simples: document.getElementById('det-resumo-simples').value.trim() || null,
