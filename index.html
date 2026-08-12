@@ -1900,9 +1900,12 @@ async function carregarTarefas(){
   const filtrado = statusFiltro ? data.filter(t=>t.status===statusFiltro) : data;
   document.querySelector('#tbl-tarefas tbody').innerHTML = filtrado.length ? filtrado.map(t=>{
     const souResponsavel = t.responsavel_id === currentUser.id;
+    const tituloTarefa = souResponsavel
+      ? `<a href="javascript:void(0)" onclick="abrirProcessoParaCumprirTarefa('${t.processo_id}')" style="color:var(--konsiTeal); text-decoration:underline;" title="Abrir processo para cumprir a tarefa">${t.titulo}</a>`
+      : t.titulo;
     return `<tr>
       <td>${fmtDate(t.data_prazo)}</td>
-      <td>${t.titulo} ${t.origem_tarefa==='ROBO_DATAJUD' ? '<span class="badge-robo">DataJud</span>' : ''}</td>
+      <td>${tituloTarefa} ${t.origem_tarefa==='ROBO_DATAJUD' ? '<span class="badge-robo">DataJud</span>' : ''}</td>
       <td>${t.numero_processo}</td>
       <td>${t.nome_cliente}</td>
       <td>${t.responsavel||'—'}</td>
@@ -2539,6 +2542,14 @@ function renderDetView(p){
       ${fc('Situação atual', p.situacao_atual||'—')}
     </div>
   `;
+}
+
+// Atalho para quem é responsável por uma tarefa: abre o processo já direto
+// na tela de edição, já que cumprir a tarefa normalmente é editar o processo
+// (atualizar situação, resumo, evidências etc.), não só marcar "concluído".
+async function abrirProcessoParaCumprirTarefa(processoId){
+  await abrirDetalhe(processoId);
+  abrirEdicaoProcesso();
 }
 
 async function abrirDetalhe(id){
