@@ -644,6 +644,11 @@
     <div class="form-row single">
       <div><label>Situação atual</label><input id="np-situacao" placeholder="Ex: Aguardando citação, Aguardando sentença..."></div>
     </div>
+    <div class="form-row single">
+      <div><label>Resumo da situação (linguagem simples, sem jargão jurídico)</label>
+        <textarea id="np-resumo-simples" rows="3" placeholder="Ex: O processo está aguardando decisão do juiz sobre um pedido da outra parte; ainda sem data prevista para julgamento."></textarea>
+      </div>
+    </div>
     <div class="section-label"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3 4 6v6c0 5 4 8 8 9 4-1 8-4 8-9V6z"/><path d="m9 12 2 2 4-4"/></svg>Evidências enviadas ao banco</div>
     <div class="form-row">
       <div><label>Enviamos evidência de "boa venda"?</label>
@@ -2047,6 +2052,7 @@ function openNovoProcesso(){
   preencherSelectDominio('np-convenio','CONVENIO');
   preencherSelectDominio('np-operacao','OPERACAO');
   preencherSelectDominio('np-motivo','MOTIVO');
+  document.getElementById('np-resumo-simples').value = '';
   openModal('modal-novo-processo');
 }
 
@@ -2202,6 +2208,7 @@ async function salvarNovoProcesso(){
     classificacao_risco: 'BAIXO', // sempre começa Baixo — reclassificação só pelo questionário guiado, depois de cadastrado
     valor_risco: document.getElementById('np-valor-risco').value || null,
     situacao_atual: document.getElementById('np-situacao').value.trim() || 'AGUARDANDO CITAÇÃO/CIÊNCIA',
+    resumo_simples: document.getElementById('np-resumo-simples').value.trim() || null,
     situacao_evidencias: calcularSituacaoEvidencias('np'),
     origem_cadastro: 'MANUAL',
     responsavel_cadastro: currentUser.id
