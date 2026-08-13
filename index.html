@@ -911,6 +911,9 @@
         <div class="section-label"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>Histórico de movimentações</div>
         <ul class="timeline" id="det-timeline"></ul>
 
+        <div class="section-label"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16v16H4z"/><path d="M8 8h8M8 12h8M8 16h4"/></svg>Comunicações do DJEN <span style="font-size:10px; font-weight:400; color:var(--textMuted);">(complemento — texto oficial e data de disponibilização)</span></div>
+        <div id="det-comunicacoes-djen"></div>
+
         <div class="section-label"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6h11"/><path d="M9 12h11"/><path d="M9 18h11"/><path d="M4 6h.01"/><path d="M4 12h.01"/><path d="M4 18h.01"/></svg>Tarefas deste processo</div>
         <div id="det-tarefas"></div>
 
@@ -947,6 +950,7 @@ const SUPABASE_ANON_KEY = "sb_publishable_lA4dktH-wj2s33O0YTeQ2g_kqiejF5b";
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 const FN_ADMIN_USUARIOS = `${SUPABASE_URL}/functions/v1/admin-usuarios`;
 const FN_SYNC_DATAJUD = `${SUPABASE_URL}/functions/v1/sync-datajud`;
+const FN_SYNC_DJEN = `${SUPABASE_URL}/functions/v1/sync-djen`;
 
 let currentUser = null;
 let currentUserIsAdmin = false;
@@ -994,6 +998,7 @@ async function afterLogin(){
   await carregarUsuariosAtivos();
   await carregarTudo();
   sincronizarComDatajud(); // dispara em segundo plano, não trava a tela de login
+  sincronizarComDjen(); // idem — independente, não trava se o DJEN falhar
 }
 
 // Lista de usuários ativos, usada para preencher os seletores de
@@ -1029,15 +1034,29 @@ async function sincronizarComDatajud(){
     });
     const resultado = await resp.json();
     if(resultado?.iniciado){
-      // dá um tempo pro robô rodar no servidor antes de recarregar o painel;
-      // se a pessoa já tiver saído da tela inicial, não tem problema, é só
-      // uma consulta a mais sem efeito visível.
       setTimeout(() => { carregarAtualizacoesRecentes(); }, 20000);
     }
   }catch(e){
-    // Falha silenciosa de propósito: se o DataJud estiver fora do ar ou a
-    // chave tiver expirado, isso não deve atrapalhar quem só quer usar o sistema.
     console.warn('Sincronização com o DataJud não completou:', e);
+  }
+}
+
+// Independente da sync-datajud de propósito: se o DJEN falhar ou demorar,
+// isso não deve atrapalhar a sincronização que já funciona bem hoje.
+async function sincronizarComDjen(){
+  try{
+    const { data: { session } } = await sb.auth.getSession();
+    if(!session) return;
+    await fetch(FN_SYNC_DJEN, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${session.access_token}`,
+        'apikey': SUPABASE_ANON_KEY,
+        'Content-Type': 'application/json',
+      },
+    });
+  }catch(e){
+    console.warn('Sincronização com o DJEN não completou:', e);
   }
 }
 
@@ -1887,6 +1906,51 @@ function exportarComplianceCsv(){
   link.click();
 }
 
+async function carregarComunicacoesDjen(processoId){
+  const el = document.getElementById('det-comunicacoes-djen');
+  const { data, error } = await sb.from('comunicacoes_djen')
+    .select('*').eq('processo_id', processoId)
+    .order('data_disponibilizacao', { ascending: false });
+  if(error || !data?.length){
+    el.innerHTML = emptyState('Nenhuma comunicação do DJEN encontrada ainda', 'Sincroniza automaticamente no login — ou pode não haver nada publicado ainda para este processo.');
+    return;
+  }
+  el.innerHTML = data.map((c,i)=>`
+    <div class="panel" style="margin-bottom:10px; ${c.resultado_sugerido ? 'border-color:var(--alerta);' : ''}">
+      <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">
+        <div>
+          <span class="badge-robo">${c.tipo_comunicacao||'Comunicação'}</span>
+          <b style="margin-left:6px;">${fmtDate(c.data_disponibilizacao)}</b>
+          <span style="color:var(--textSecondary); font-size:12px;"> · ${c.nome_orgao||''}</span>
+        </div>
+        ${c.link ? `<a href="${c.link}" target="_blank" rel="noopener" style="font-size:12px; color:var(--konsiTeal);">Ver documento original ↗</a>` : ''}
+      </div>
+      ${c.resultado_sugerido ? `
+        <div style="background:var(--alertaBg); border:1px solid var(--alerta); border-radius:8px; padding:8px 10px; margin-top:8px; display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">
+          <div style="font-size:12px;">🔎 Palavra-chave encontrada no texto — possível resultado: <b>${c.resultado_sugerido}</b>. Confira o texto completo antes de confirmar.</div>
+          <button class="btn-secondary" style="width:auto; font-size:11px;" onclick="aplicarSugestaoDjen('${processoId}','${c.resultado_sugerido}')">Aplicar à Situação Atual</button>
+        </div>` : ''}
+      <div id="djen-texto-${i}" style="font-size:12.5px; color:var(--textSecondary); margin-top:8px; max-height:60px; overflow:hidden; white-space:pre-wrap;">${c.texto||'(sem texto)'}</div>
+      <button class="btn-ghost" style="margin-top:4px; font-size:11px;" onclick="
+        const el=document.getElementById('djen-texto-${i}');
+        const expandido = el.style.maxHeight==='none';
+        el.style.maxHeight = expandido ? '60px' : 'none';
+        this.textContent = expandido ? 'Ver texto completo' : 'Recolher';
+      ">Ver texto completo</button>
+    </div>
+  `).join('');
+}
+
+// Aplica a sugestão detectada por palavra-chave à Situação Atual do
+// processo — só depois de a pessoa clicar e confirmar, nunca automático.
+async function aplicarSugestaoDjen(processoId, situacaoSugerida){
+  if(!confirm(`Confirma que o resultado é "${situacaoSugerida}"? Isso vai atualizar a Situação Atual do processo — confira o texto completo antes de confirmar, se ainda não conferiu.`)) return;
+  const { error } = await sb.from('processos_judiciais').update({ situacao_atual: situacaoSugerida }).eq('id', processoId);
+  if(error){ toast('Erro: '+error.message); return; }
+  toast('Situação atual atualizada.');
+  await abrirDetalhe(processoId);
+}
+
 function abrirDetalheBanco(){
   const total = bancoCache.reduce((s,b)=>s+b.n,0);
   const container = document.getElementById('chart-banco-completo');
@@ -2627,6 +2691,7 @@ async function abrirDetalhe(id){
   await carregarTimeline(id);
   await carregarTarefasDoProcesso(id);
   await carregarLogEdicoesProcesso(id);
+  await carregarComunicacoesDjen(id);
   openModal('modal-detalhe');
 }
 
