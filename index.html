@@ -508,6 +508,7 @@
       </div>
       <div class="filters">
         <select id="f-banco"><option value="">Todos os bancos</option></select>
+        <select id="f-tribunal"><option value="">Todos os tribunais</option></select>
         <select id="f-motivo"><option value="">Todos os motivos</option></select>
         <select id="f-risco"><option value="">Todos os riscos</option></select>
         <select id="f-status-processo">
@@ -1169,7 +1170,12 @@ function montarFiltros(){
   const bancos = [...new Set(processosCache.map(p=>p.banco).filter(Boolean))].sort();
   const selBanco = document.getElementById('f-banco');
   selBanco.innerHTML = '<option value="">Todos os bancos</option>' + bancos.map(b=>`<option>${b}</option>`).join('');
-  ['f-banco','f-motivo','f-risco','f-busca','f-ajuizamento-de','f-ajuizamento-ate','f-status-processo','f-origem-cadastro','f-evidencias','f-cadastro-de','f-cadastro-ate'].forEach(id=>{
+
+  const tribunais = [...new Set(processosCache.map(p=>p.tribunal).filter(Boolean))].sort();
+  const selTribunal = document.getElementById('f-tribunal');
+  selTribunal.innerHTML = '<option value="">Todos os tribunais</option>' + tribunais.map(t=>`<option>${t}</option>`).join('');
+
+  ['f-banco','f-tribunal','f-motivo','f-risco','f-busca','f-ajuizamento-de','f-ajuizamento-ate','f-status-processo','f-origem-cadastro','f-evidencias','f-cadastro-de','f-cadastro-ate'].forEach(id=>{
     document.getElementById(id).oninput = ()=>{ paginaProcessosAtual = 1; renderTabelaProcessos(); };
   });
   document.getElementById('pag-processos-tamanho').onchange = ()=>{ paginaProcessosAtual = 1; renderTabelaProcessos(); };
@@ -1177,6 +1183,7 @@ function montarFiltros(){
 
 function limparTodosFiltros(){
   document.getElementById('f-banco').value = '';
+  document.getElementById('f-tribunal').value = '';
   document.getElementById('f-motivo').value = '';
   document.getElementById('f-risco').value = '';
   document.getElementById('f-status-processo').value = 'ATIVO';
@@ -1193,6 +1200,7 @@ function limparTodosFiltros(){
 
 function renderTabelaProcessos(){
   const banco = document.getElementById('f-banco').value;
+  const tribunal = document.getElementById('f-tribunal').value;
   const motivo = document.getElementById('f-motivo').value;
   const risco = document.getElementById('f-risco').value;
   const busca = document.getElementById('f-busca').value.toLowerCase();
@@ -1206,6 +1214,7 @@ function renderTabelaProcessos(){
   const tbody = document.querySelector('#tbl-processos tbody');
   const filtrado = processosCache.filter(p=>
     (!banco || p.banco===banco) &&
+    (!tribunal || p.tribunal===tribunal) &&
     (!motivo || p.motivo===motivo) &&
     (!risco || p.classificacao_risco===risco) &&
     (!statusProc || (p.status_processo||'ATIVO')===statusProc) &&
