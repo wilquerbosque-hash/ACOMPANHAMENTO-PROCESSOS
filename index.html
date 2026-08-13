@@ -641,7 +641,7 @@
       <p class="field-note" style="margin-top:4px;">O processo começa classificado como <b>Baixo</b> por padrão. A reclassificação de risco só é feita depois, pelo questionário guiado (aba Processos → abrir o processo → Editar).</p>
     </div>
     <div class="form-row single">
-      <div><label>Situação atual</label><input id="np-situacao" placeholder="Ex: Aguardando citação, Aguardando sentença..."></div>
+      <div><label>Situação atual</label><select id="np-situacao" onchange="tratarNovoValorDominio('np-situacao','SITUACAO_ATUAL')"></select></div>
     </div>
     <div class="form-row single">
       <div><label>Resumo da situação (linguagem simples, sem jargão jurídico)</label>
@@ -840,7 +840,7 @@
             </div>
             <div><label>Valor em risco (R$)</label><input id="det-valor-risco" type="text" inputmode="decimal" placeholder="Ex: 5.000,00"></div>
           </div>
-          <div class="form-row single"><div><label>Situação atual</label><input id="det-situacao"></div></div>
+          <div class="form-row single"><div><label>Situação atual</label><select id="det-situacao" onchange="tratarNovoValorDominio('det-situacao','SITUACAO_ATUAL')"></select></div></div>
           <div class="section-label"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3 4 6v6c0 5 4 8 8 9 4-1 8-4 8-9V6z"/><path d="m9 12 2 2 4-4"/></svg>Evidências enviadas ao banco</div>
           <div class="form-row">
             <div><label>Enviamos evidência de "boa venda"?</label>
@@ -952,7 +952,7 @@ let currentUserIsAdmin = false;
 let processosCache = [];
 let processoAtualId = null;
 let paginaProcessosAtual = 1;
-let opcoesCache = { BANCO:[], CONVENIO:[], OPERACAO:[], MOTIVO:[] };
+let opcoesCache = { BANCO:[], CONVENIO:[], OPERACAO:[], MOTIVO:[], SITUACAO_ATUAL:[] };
 let cohortCache = [];
 let bancoCache = [];
 let metricasCache = [];
@@ -1126,13 +1126,19 @@ async function carregarTudo(){
 async function carregarOpcoesDominio(){
   const { data, error } = await sb.from('opcoes_dominio').select('categoria,valor').order('valor');
   if(error){ toast('Erro ao carregar listas: '+error.message); return; }
-  opcoesCache = { BANCO:[], CONVENIO:[], OPERACAO:[], MOTIVO:[] };
+  opcoesCache = { BANCO:[], CONVENIO:[], OPERACAO:[], MOTIVO:[], SITUACAO_ATUAL:[] };
   (data||[]).forEach(o=>{ if(opcoesCache[o.categoria]) opcoesCache[o.categoria].push(o.valor); });
 }
 
 function preencherSelectDominio(selectId, categoria, valorAtual){
   const sel = document.getElementById(selectId);
+  // Se o valor já cadastrado não bate com nenhuma opção padrão (comum ao
+  // padronizar um campo que antes era texto livre), mostra ele mesmo assim,
+  // sinalizado — sem isso, o select cairia em branco e um "Salvar" sem querer
+  // apagaria a informação que já existia.
+  const foraDaLista = valorAtual && !opcoesCache[categoria].includes(valorAtual);
   sel.innerHTML = '<option value="">Selecione...</option>' +
+    (foraDaLista ? `<option value="${valorAtual}">${valorAtual} (atual, fora da lista padrão)</option>` : '') +
     opcoesCache[categoria].map(v=>`<option value="${v}">${v}</option>`).join('') +
     '<option value="__novo__">+ Adicionar novo...</option>';
   if(valorAtual) sel.value = valorAtual;
@@ -2082,7 +2088,7 @@ function openNovoProcesso(){
   // Limpa todo campo de texto/data/número/textarea do formulário — sem isso,
   // o navegador mantém o que foi digitado no cadastro anterior.
   ['np-numero','np-tribunal','np-nome','np-ade','np-valor-operacao','np-data-operacao',
-   'np-data-ajuizamento','np-valor-risco','np-situacao','np-resumo-simples'].forEach(id=>{
+   'np-data-ajuizamento','np-valor-risco','np-resumo-simples'].forEach(id=>{
     document.getElementById(id).value = '';
   });
   document.getElementById('np-evidencias-possui').value = 'AGUARDANDO_CONTESTACAO';
@@ -2093,6 +2099,7 @@ function openNovoProcesso(){
   preencherSelectDominio('np-convenio','CONVENIO');
   preencherSelectDominio('np-operacao','OPERACAO');
   preencherSelectDominio('np-motivo','MOTIVO');
+  preencherSelectDominio('np-situacao','SITUACAO_ATUAL');
   openModal('modal-novo-processo');
 }
 
@@ -2470,7 +2477,7 @@ function processarLinhasCsv(linhas){
         // uma vez), colunas omitidas em algumas linhas viram NULL explícito
         // em vez de aplicar o valor padrão do banco — e situacao_atual não
         // aceita NULL. Por isso sempre mandamos um texto concreto.
-        situacao_atual: (linha.situacao_atual||'').trim() || 'AGUARDANDO CITAÇÃO/CIÊNCIA',
+        situacao_atual: (linha.situacao_atual||'').trim().toUpperCase() || 'AGUARDANDO CITAÇÃO/CIÊNCIA',
         situacao_evidencias: normalizarEvidenciasCsv(linha.situacao_evidencias),
         origem_cadastro: 'IMPORTACAO_CSV',
         responsavel_cadastro: currentUser.id,
@@ -2668,7 +2675,7 @@ function abrirEdicaoProcesso(){
   document.getElementById('det-risco').value = p.classificacao_risco;
   document.getElementById('det-valor-risco').value = fmtNumeroBR(p.valor_risco);
   aplicarRegraSuperendividamento('det');
-  document.getElementById('det-situacao').value = p.situacao_atual || '';
+  preencherSelectDominio('det-situacao','SITUACAO_ATUAL', p.situacao_atual);
   preencherCampoEvidencias('det', p.situacao_evidencias || 'AGUARDANDO_CONTESTACAO');
   document.getElementById('det-resumo-simples').value = p.resumo_simples || '';
   document.getElementById('det-resultado').value = p.resultado || 'EM_ANDAMENTO';
