@@ -1363,9 +1363,16 @@ async function carregarDashboard(){
   const porBanco = {};
   ativos.forEach(p=>{ const b=p.banco||'(sem banco)'; porBanco[b]=porBanco[b]||{n:0,v:0}; porBanco[b].n++; porBanco[b].v+=Number(p.valor_risco)||0; });
   bancoCache = Object.entries(porBanco).sort((a,b)=>b[1].n-a[1].n).map(([b,v])=>({label:b, n:v.n, v:v.v}));
-  renderPieChart(document.getElementById('chart-por-banco'), bancoCache.slice(0,6),
-    i=>`${i.n} · ${fmtMoney(i.v)}`, 'processos',
+  const bancoTop6 = bancoCache.slice(0,6);
+  const bancoForaDoTop6 = bancoCache.slice(6).reduce((s,b)=>s+b.n,0);
+  renderPieChart(document.getElementById('chart-por-banco'), bancoTop6,
+    i=>`${i.n} · ${fmtMoney(i.v)}`,
+    bancoForaDoTop6>0 ? `de ${total}` : 'processos',
     (item)=> abrirDrilldown('banco', item.label, 'motivo', 'Motivo', ativos));
+  if(bancoForaDoTop6>0){
+    document.getElementById('chart-por-banco').insertAdjacentHTML('beforeend',
+      `<div style="font-size:11px; color:var(--textSecondary); text-align:center; margin-top:6px;">+ ${bancoForaDoTop6} processo(s) em outros bancos — <a href="javascript:void(0)" onclick="abrirDetalheBanco()" style="color:var(--konsiTeal);">ver todos</a></div>`);
+  }
 
   const RISK_COLOR = { CRITICO:'#FF6B6B', ALTO:'#F0935B', MEDIO:'#F3B94E', BAIXO:'#3FDC9E' };
   const porRisco = {};
