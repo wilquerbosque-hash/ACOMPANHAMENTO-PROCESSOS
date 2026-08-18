@@ -1448,11 +1448,34 @@ function renderPainel15Dias(containerId){
 
   // ---- KPIs do período
   const valorTotalOperacoes = recentes.reduce((s,p)=>s+(Number(p.valor_operacao)||0),0);
-  const temposAjuizamento = recentes.map(p=>diasEntre(p.data_operacao, p.data_ajuizamento)).filter(d=>d!=null && d>=0);
-  const tempoMedio = temposAjuizamento.length ? Math.round(temposAjuizamento.reduce((a,b)=>a+b,0)/temposAjuizamento.length) : null;
+
+  // Proteção: uma data digitada errada (ano trocado, etc.) não pode mais
+  // estragar a média inteira — acima de 10 anos entre operação e
+  // ajuizamento é claramente erro de cadastro, não dado real. Esses casos
+  // ficam de fora da média, mas são sinalizados pra alguém corrigir.
+  const DIAS_MAX_RAZOAVEL = 3650;
+  const temposBrutos = recentes.map(p=>({ p, dias: diasEntre(p.data_operacao, p.data_ajuizamento) }));
+  const temposValidos = temposBrutos.filter(t=>t.dias!=null && t.dias>=0 && t.dias<=DIAS_MAX_RAZOAVEL);
+  const temposSuspeitos = temposBrutos.filter(t=>t.dias!=null && (t.dias<0 || t.dias>DIAS_MAX_RAZOAVEL));
+  const tempoMedio = temposValidos.length ? Math.round(temposValidos.reduce((a,s)=>a+s.dias,0)/temposValidos.length) : null;
+
   const comEvidencia = recentes.filter(p=>['COM_EVIDENCIA_UTILIZADA','COM_EVIDENCIA_NAO_UTILIZADA'].includes(p.situacao_evidencias)).length;
   const baseEvidencia = recentes.filter(p=>p.situacao_evidencias && p.situacao_evidencias!=='AGUARDANDO_CONTESTACAO').length;
   const pctEvidencia = baseEvidencia ? Math.round(comEvidencia/baseEvidencia*100) : null;
+
+  // ---- Cohort: agrupa pelo mês da OPERAÇÃO (não do cadastro) — mostra, dos
+  // processos cadastrados nesses 15 dias, quantos vieram de cada mês de
+  // operação e quantos já têm ajuizamento registrado (formato pedido:
+  // "N operações em tal mês, M contestadas").
+  const porMesOperacao = {};
+  recentes.forEach(p=>{
+    if(!p.data_operacao) return;
+    const mes = p.data_operacao.slice(0,7);
+    porMesOperacao[mes] = porMesOperacao[mes] || { total:0, contestadas:0 };
+    porMesOperacao[mes].total++;
+    if(p.data_ajuizamento) porMesOperacao[mes].contestadas++;
+  });
+  const cohortOrdenado = Object.entries(porMesOperacao).sort((a,b)=>b[0].localeCompare(a[0]));
 
   // ---- Breakdowns (banco, tipo de operação)
   const agrupar = (campo) => {
@@ -1474,14 +1497,26 @@ function renderPainel15Dias(containerId){
           <button class="btn-secondary" style="width:auto; font-size:11px;" onclick="irParaProcessosComFiltro('f-motivo','${motivo}')">Ver processos</button>
         </div>`).join('') : ''}
 
-      <div class="cards-row" style="margin-bottom:14px;">
+      <div class="cards-row" style="margin-bottom:6px;">
         <div class="kpi-card"><div><div class="label">Processos cadastrados</div><div class="value">${recentes.length}</div></div></div>
         <div class="kpi-card"><div><div class="label">Valor das operações</div><div class="value">${fmtMoney(valorTotalOperacoes)}</div></div></div>
         <div class="kpi-card"><div><div class="label">Tempo médio operação → ajuizamento</div><div class="value">${tempoMedio!=null ? tempoMedio+' dias' : '—'}</div></div></div>
         <div class="kpi-card"><div><div class="label">% com evidência (já definida)</div><div class="value">${pctEvidencia!=null ? pctEvidencia+'%' : '—'}</div></div></div>
       </div>
+      ${temposSuspeitos.length ? `
+        <p class="field-note" style="color:var(--alerta); margin:0 0 14px;">
+          ⚠ ${temposSuspeitos.length} processo(s) excluído(s) do cálculo do tempo médio por data suspeita (diferença negativa ou maior que 10 anos) —
+          confira: ${temposSuspeitos.map(t=>t.p.numero_processo).join(', ')}. Provavelmente é erro de digitação em "Data da operação" ou "Data de ajuizamento".
+        </p>` : ''}
 
-      <div class="grid-2" style="margin-bottom:6px;">
+      <h4 style="font-size:12.5px; margin:14px 0 8px; color:var(--textPrimary);">Cohort — por mês da operação</h4>
+      ${cohortOrdenado.length ? cohortOrdenado.map(([mes,d])=>`
+        <div style="display:flex; justify-content:space-between; font-size:12px; padding:4px 0; border-bottom:1px solid var(--border);">
+          <span>${fmtMesAno(mes+'-01')}</span>
+          <span style="color:var(--textSecondary);">${d.total} operaç${d.total===1?'ão':'ões'} · ${d.contestadas} já contestada${d.contestadas===1?'':'s'}</span>
+        </div>`).join('') : '<p class="field-note">Sem data de operação preenchida nos processos deste período.</p>'}
+
+      <div class="grid-2" style="margin:14px 0 6px;">
         <div>
           <h4 style="font-size:12.5px; margin:0 0 8px; color:var(--textPrimary);">Por motivo</h4>
           ${porMotivo && Object.keys(porMotivo).length ? Object.entries(porMotivo).sort((a,b)=>b[1].n-a[1].n).map(([m,d])=>`
