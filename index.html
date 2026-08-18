@@ -4,6 +4,13 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Konsi Jurídico | Acompanhamento de Processos</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#04513F">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Konsi Jurídico">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -78,6 +85,20 @@
   nav.tabs button.active{ background:var(--konsiTeal); color:#08130F; }
   nav.tabs button.active:hover{ background:var(--konsiTeal); color:#08130F; }
   .user-chip{ font-size:13px; color:var(--textSecondary); display:flex; align-items:center; gap:10px;}
+
+  /* ---------- MENU COMPACTO (celular) ---------- */
+  #btn-menu-mobile{ display:none; background:transparent; border:none; color:#fff; padding:8px; cursor:pointer; }
+  @media (max-width:820px){
+    header.topbar{ padding:0 14px; }
+    #btn-menu-mobile{ display:block; }
+    nav.tabs{
+      display:none; position:fixed; top:64px; left:0; right:0; bottom:0; z-index:30;
+      background:var(--bgBlack); flex-direction:column; gap:2px; padding:14px; overflow-y:auto;
+    }
+    nav.tabs.aberto{ display:flex; }
+    nav.tabs button{ text-align:left; padding:14px 16px; font-size:15px; }
+    .user-chip span{ display:none; } /* nome do usuário some, some espaço; "Sair" continua visível */
+  }
   .user-chip button{ color:var(--textSecondary); text-decoration:underline; background:none; font-size:12px; }
 
   main{ max-width:1600px; margin:0 auto; padding:28px; }
@@ -96,6 +117,51 @@
 
   .grid-2{ display:grid; grid-template-columns:1.3fr 1fr; gap:20px; }
   @media (max-width:960px){ .grid-2{ grid-template-columns:1fr; } }
+  @media (max-width:640px){
+    .form-row{ grid-template-columns:1fr; }
+    .modal{ padding:18px 16px; max-width:100%; }
+    .form-actions{ flex-wrap:wrap; }
+  }
+  @media (max-width:700px){
+    /* Só nessas duas tabelas — as demais (Compliance, Métricas, Usuários)
+       continuam com rolagem horizontal por enquanto. */
+    #tbl-processos, #tbl-tarefas{ display:block; width:100%; }
+    #tbl-processos thead, #tbl-tarefas thead{ display:none; }
+    #tbl-processos tbody, #tbl-tarefas tbody{ display:block; width:100%; }
+    #tbl-processos tr, #tbl-tarefas tr{
+      display:block; background:var(--surfaceCard); border:1px solid var(--border);
+      border-radius:10px; padding:10px 12px; margin-bottom:10px;
+    }
+    #tbl-processos td:not([colspan]), #tbl-tarefas td:not([colspan]){
+      display:flex; justify-content:space-between; align-items:center; gap:10px;
+      padding:5px 0; border:none; text-align:right; white-space:normal; max-width:none;
+    }
+    #tbl-processos td.truncate, #tbl-tarefas td.truncate{ overflow:visible; text-overflow:clip; white-space:normal; }
+    #tbl-processos td::before, #tbl-tarefas td::before{
+      content:attr(data-label); font-size:10.5px; color:var(--textSecondary); font-weight:600; text-align:left; flex-shrink:0;
+    }
+    #tbl-tarefas td[data-label=""]{ display:block; text-align:left; }
+    #tbl-tarefas td[data-label=""]::before{ content:none; }
+  }
+
+  /* ---------- FORMULÁRIOS PRO TOQUE (celular) ---------- */
+  @media (max-width:820px){
+    /* font-size 16px evita o iOS dar zoom sozinho ao focar um campo */
+    input, select, textarea{ padding:13px 14px; font-size:16px; min-height:46px; }
+    button{ min-height:44px; }
+    .btn-ghost{ padding:10px 14px; min-height:40px; }
+    .btn-secondary{ padding:12px 16px; }
+    .btn-primary{ padding:13px 18px; }
+    label{ margin-bottom:8px; font-size:12.5px; }
+    input[type="checkbox"], input[type="radio"]{ width:19px; height:19px; margin-right:6px; vertical-align:middle; }
+    .form-actions{ gap:12px; }
+    .filters{ gap:12px; }
+    .filters select, .filters input{ min-height:44px; }
+    #tbl-processos td:not([colspan]) button, #tbl-tarefas td:not([colspan]) button{
+      margin:3px 6px 3px 0; min-height:38px; padding:8px 14px;
+    }
+    #modal-questionario-risco label{ display:inline-flex; align-items:center; padding:6px 0; }
+  }
 
   table{ width:100%; border-collapse:collapse; font-size:13px;}
   th{ text-align:left; background:var(--konsiTealDark); color:#fff; padding:10px 12px; font-weight:600; position:sticky; top:0;}
@@ -305,8 +371,11 @@
 <!-- ============ APP ============ -->
 <div id="app">
   <header class="topbar">
+    <button id="btn-menu-mobile" onclick="toggleMenuMobile()" aria-label="Abrir menu">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
+    </button>
     <div class="logo-mark" style="margin-bottom:0;"><img src="assets/logo-konsi.png" alt="Konsi" style="height:38px;"></div>
-    <nav class="tabs">
+    <nav class="tabs" id="main-nav">
       <button data-view="dashboard" class="active" onclick="showView('dashboard')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px; margin-right:5px;"><rect x="3" y="3" width="8" height="8" rx="1"/><rect x="13" y="3" width="8" height="5" rx="1"/><rect x="13" y="12" width="8" height="9" rx="1"/><rect x="3" y="14" width="8" height="7" rx="1"/></svg>Dashboard</button>
       <button data-view="processos" onclick="showView('processos')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px; margin-right:5px;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>Processos</button>
       <button data-view="tarefas" onclick="showView('tarefas')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px; margin-right:5px;"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M3 10h18"/><path d="m9 16 2 2 4-4"/></svg>Acompanhamentos</button>
@@ -1125,9 +1194,13 @@ function showView(view){
   document.getElementById('view-'+view).classList.add('active');
   document.querySelectorAll('nav.tabs button').forEach(b=>b.classList.toggle('active', b.dataset.view===view));
   document.getElementById('fab-btn').style.display = view==='processos' ? 'flex' : 'none';
+  document.getElementById('main-nav').classList.remove('aberto'); // fecha o menu no celular ao escolher uma aba
   if(view==='usuarios') carregarUsuarios();
   if(view==='metricas') carregarMetricas();
   if(view==='compliance') carregarCompliance();
+}
+function toggleMenuMobile(){
+  document.getElementById('main-nav').classList.toggle('aberto');
 }
 function openModal(id){ document.getElementById(id).classList.add('active'); }
 function closeModal(id){ document.getElementById(id).classList.remove('active'); }
@@ -1255,17 +1328,17 @@ function renderTabelaProcessos(){
 
   tbody.innerHTML = pagina.length ? pagina.map(p=>`
     <tr class="clickable" onclick="abrirDetalhe('${p.id}')">
-      <td class="truncate" title="${p.numero_processo}">${p.numero_processo}</td>
-      <td class="truncate" title="${p.nome_cliente}">${p.nome_cliente}</td>
-      <td>${p.banco}</td>
-      <td>${p.convenio||'—'}</td>
-      <td>${p.tipo_operacao||'—'}</td>
-      <td class="truncate" title="${p.motivo}">${p.motivo}</td>
-      <td>${fmtDate(p.data_ajuizamento)}</td>
-      <td class="truncate" title="${p.situacao_atual||''}">${p.situacao_atual||'—'}</td>
-      <td><span class="badge badge-${p.classificacao_risco}">${p.classificacao_risco}</span></td>
-      <td><span class="badge badge-${p.status_processo||'ATIVO'}">${(p.status_processo||'ATIVO')==='ATIVO'?'Ativo':'Arquivado'}</span></td>
-      <td>${fmtMoney(p.valor_risco)}</td>
+      <td class="truncate" data-label="Processo" title="${p.numero_processo}">${p.numero_processo}</td>
+      <td class="truncate" data-label="Cliente" title="${p.nome_cliente}">${p.nome_cliente}</td>
+      <td data-label="Banco">${p.banco}</td>
+      <td data-label="Convênio">${p.convenio||'—'}</td>
+      <td data-label="Operação">${p.tipo_operacao||'—'}</td>
+      <td class="truncate" data-label="Motivo" title="${p.motivo}">${p.motivo}</td>
+      <td data-label="Ajuizamento">${fmtDate(p.data_ajuizamento)}</td>
+      <td class="truncate" data-label="Situação" title="${p.situacao_atual||''}">${p.situacao_atual||'—'}</td>
+      <td data-label="Risco"><span class="badge badge-${p.classificacao_risco}">${p.classificacao_risco}</span></td>
+      <td data-label="Status"><span class="badge badge-${p.status_processo||'ATIVO'}">${(p.status_processo||'ATIVO')==='ATIVO'?'Ativo':'Arquivado'}</span></td>
+      <td data-label="Valor em risco">${fmtMoney(p.valor_risco)}</td>
     </tr>`).join('') : `<tr><td colspan="11">${emptyState('Nenhum processo encontrado', 'Ajuste os filtros ou cadastre um novo processo.')}</td></tr>`;
 
   document.getElementById('pag-processos-info').textContent = filtrado.length
@@ -2013,13 +2086,13 @@ async function carregarTarefas(){
       ? `<a href="javascript:void(0)" onclick="abrirProcessoParaCumprirTarefa('${t.processo_id}')" style="color:var(--konsiTeal); text-decoration:underline;" title="Abrir processo para cumprir a tarefa">${t.titulo}</a>`
       : t.titulo;
     return `<tr>
-      <td>${fmtDate(t.data_prazo)}</td>
-      <td>${tituloTarefa} ${t.origem_tarefa==='ROBO_DATAJUD' ? '<span class="badge-robo">DataJud</span>' : ''}</td>
-      <td>${t.numero_processo}</td>
-      <td>${t.nome_cliente}</td>
-      <td>${t.responsavel||'—'}</td>
-      <td><span class="badge badge-${t.status}">${t.status}</span></td>
-      <td style="white-space:nowrap;">
+      <td data-label="Prazo">${fmtDate(t.data_prazo)}</td>
+      <td data-label="Tarefa">${tituloTarefa} ${t.origem_tarefa==='ROBO_DATAJUD' ? '<span class="badge-robo">DataJud</span>' : ''}</td>
+      <td data-label="Processo">${t.numero_processo}</td>
+      <td data-label="Cliente">${t.nome_cliente}</td>
+      <td data-label="Responsável">${t.responsavel||'—'}</td>
+      <td data-label="Status"><span class="badge badge-${t.status}">${t.status}</span></td>
+      <td data-label="" style="white-space:nowrap;">
         ${t.status!=='CONCLUIDA' && souResponsavel ? `<button class="btn-ghost" onclick="concluirTarefa('${t.tarefa_id}','${t.processo_id}')">Concluir</button>` : ''}
         ${currentUserIsAdmin ? `<button class="btn-ghost" onclick='abrirEdicaoTarefa(${JSON.stringify({id:t.tarefa_id, titulo:t.titulo, data_prazo:t.data_prazo, responsavel_id:t.responsavel_id, processo_id:t.processo_id})})'>Editar</button>` : ''}
         ${currentUserIsAdmin ? `<button class="btn-ghost" style="color:var(--erro);" onclick="excluirTarefa('${t.tarefa_id}','${t.processo_id}')">Excluir</button>` : ''}
@@ -3001,6 +3074,15 @@ async function excluirUsuario(user_id){
     await carregarUsuarios();
     await carregarUsuariosAtivos();
   }catch(e){ toast('Erro: '+e.message); }
+}
+
+// Registra o service worker do PWA — habilita "Adicionar à tela inicial"
+// no celular. Falha silenciosa de propósito: navegadores mais antigos ou
+// sem suporte não devem quebrar o uso normal do sistema.
+if('serviceWorker' in navigator){
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js').catch(e => console.warn('Service worker não registrado:', e));
+  });
 }
 </script>
 </body>
