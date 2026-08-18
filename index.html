@@ -396,6 +396,7 @@
         <div><h2>Visão geral</h2><p>Exposição e andamento dos processos judiciais recepcionados</p></div>
       </div>
       <div id="banner-mes-faltando"></div>
+      <div id="painel-15d-dashboard"></div>
       <div class="cards-row" id="kpi-cards"></div>
       <div class="grid-2">
         <div class="panel">
@@ -505,6 +506,8 @@
         <div><h2>Compliance e provisionamento</h2><p>Exposição financeira, concentração de risco e sinais de prevenção — só processos ativos</p></div>
         <button class="btn-secondary" onclick="exportarComplianceCsv()">Exportar CSV</button>
       </div>
+
+      <div id="painel-15d-compliance"></div>
 
       <div class="cards-row" id="compliance-kpi-cards"></div>
 
@@ -1400,7 +1403,130 @@ function renderPieChart(container, items, formatValue, totalLabel, onItemClick){
   }
 }
 
+// ---------------- PAINEL "ÚLTIMOS 15 DIAS" (Dashboard e Compliance) ----------------
+// Usa a data de AJUIZAMENTO como "quando a ação aconteceu" — é a que tem
+// sentido jurídico real (data de cadastro no sistema pode ser bem depois).
+const DIAS_JANELA_ALERTA = 15;
+const LIMITE_ACOES_MESMO_MOTIVO = 9; // acima disso, dispara alerta
+
+function diasEntre(dataA, dataB){
+  if(!dataA || !dataB) return null;
+  const ms = new Date(dataB+'T00:00:00') - new Date(dataA+'T00:00:00');
+  return Math.round(ms / 86400000);
+}
+
+function renderPainel15Dias(containerId){
+  const el = document.getElementById(containerId);
+  if(!el) return;
+
+  const hoje = new Date();
+  const corte = new Date(hoje); corte.setDate(corte.getDate() - DIAS_JANELA_ALERTA);
+  const corteStr = corte.toISOString().slice(0,10);
+  const hojeStr = hoje.toISOString().slice(0,10);
+
+  const recentes = processosCache.filter(p => p.data_ajuizamento && p.data_ajuizamento >= corteStr && p.data_ajuizamento <= hojeStr);
+
+  if(!recentes.length){
+    el.innerHTML = `<div class="panel" style="border-color:var(--konsiTeal); margin-bottom:20px;">
+      <h3 style="margin-bottom:4px;">Últimos ${DIAS_JANELA_ALERTA} dias <span style="font-size:11px; font-weight:400; color:var(--textSecondary);">(${fmtDate(corteStr)} a ${fmtDate(hojeStr)})</span></h3>
+      <p class="field-note" style="margin:6px 0 0;">Nenhuma ação ajuizada registrada nesse período ainda.</p>
+    </div>`;
+    return;
+  }
+
+  // ---- Alertas: motivo com mais de 9 ações no período, exceto Superendividamento
+  const porMotivo = {};
+  recentes.forEach(p=>{
+    const m = p.motivo || '(sem motivo)';
+    porMotivo[m] = porMotivo[m] || { n:0, v:0 };
+    porMotivo[m].n++;
+    porMotivo[m].v += Number(p.valor_operacao)||0;
+  });
+  const alertas = Object.entries(porMotivo)
+    .filter(([m,d]) => m!=='SUPERENDIVIDAMENTO' && d.n > LIMITE_ACOES_MESMO_MOTIVO)
+    .sort((a,b)=>b[1].n-a[1].n);
+
+  // ---- KPIs do período
+  const valorTotalOperacoes = recentes.reduce((s,p)=>s+(Number(p.valor_operacao)||0),0);
+  const temposAjuizamento = recentes.map(p=>diasEntre(p.data_operacao, p.data_ajuizamento)).filter(d=>d!=null && d>=0);
+  const tempoMedio = temposAjuizamento.length ? Math.round(temposAjuizamento.reduce((a,b)=>a+b,0)/temposAjuizamento.length) : null;
+  const comEvidencia = recentes.filter(p=>['COM_EVIDENCIA_UTILIZADA','COM_EVIDENCIA_NAO_UTILIZADA'].includes(p.situacao_evidencias)).length;
+  const baseEvidencia = recentes.filter(p=>p.situacao_evidencias && p.situacao_evidencias!=='AGUARDANDO_CONTESTACAO').length;
+  const pctEvidencia = baseEvidencia ? Math.round(comEvidencia/baseEvidencia*100) : null;
+
+  // ---- Breakdowns (banco, tipo de operação)
+  const agrupar = (campo) => {
+    const g = {};
+    recentes.forEach(p=>{ const k = p[campo]||'(sem informação)'; g[k]=(g[k]||0)+1; });
+    return Object.entries(g).sort((a,b)=>b[1]-a[1]);
+  };
+  const porBanco = agrupar('banco');
+  const porOperacao = agrupar('tipo_operacao');
+
+  const html = `
+    <div class="panel" style="border-color:var(--konsiTeal); margin-bottom:20px;">
+      <h3 style="margin-bottom:4px;">Últimos ${DIAS_JANELA_ALERTA} dias <span style="font-size:11px; font-weight:400; color:var(--textSecondary);">(${fmtDate(corteStr)} a ${fmtDate(hojeStr)}) · ${recentes.length} ação(ões) ajuizada(s)</span></h3>
+      <p style="font-size:12px; color:var(--textSecondary); margin:2px 0 14px;">Recorte pra apoiar decisão jurídica rápida — o que entrou de novo recentemente, de onde veio e como está se comportando.</p>
+
+      ${alertas.length ? alertas.map(([motivo,d])=>`
+        <div style="background:var(--erroBg); border:1px solid var(--erro); border-radius:8px; padding:10px 14px; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">
+          <div style="font-size:12.5px; color:var(--erro);">⚠ <b>${d.n} ações</b> por "<b>${motivo}</b>" nos últimos ${DIAS_JANELA_ALERTA} dias (limite de referência: ${LIMITE_ACOES_MESMO_MOTIVO}) — ${fmtMoney(d.v)} em valor de operação. Pode indicar padrão que justifique atuação jurídica específica.</div>
+          <button class="btn-secondary" style="width:auto; font-size:11px;" onclick="irParaProcessosComFiltro('f-motivo','${motivo}')">Ver processos</button>
+        </div>`).join('') : ''}
+
+      <div class="cards-row" style="margin-bottom:14px;">
+        <div class="kpi-card"><div><div class="label">Ações ajuizadas</div><div class="value">${recentes.length}</div></div></div>
+        <div class="kpi-card"><div><div class="label">Valor das operações</div><div class="value">${fmtMoney(valorTotalOperacoes)}</div></div></div>
+        <div class="kpi-card"><div><div class="label">Tempo médio operação → ajuizamento</div><div class="value">${tempoMedio!=null ? tempoMedio+' dias' : '—'}</div></div></div>
+        <div class="kpi-card"><div><div class="label">% com evidência (já definida)</div><div class="value">${pctEvidencia!=null ? pctEvidencia+'%' : '—'}</div></div></div>
+      </div>
+
+      <div class="grid-2" style="margin-bottom:6px;">
+        <div>
+          <h4 style="font-size:12.5px; margin:0 0 8px; color:var(--textPrimary);">Por motivo</h4>
+          ${porMotivo && Object.keys(porMotivo).length ? Object.entries(porMotivo).sort((a,b)=>b[1].n-a[1].n).map(([m,d])=>`
+            <div style="display:flex; justify-content:space-between; font-size:12px; padding:4px 0; border-bottom:1px solid var(--border);">
+              <span>${m}</span><span style="color:var(--textSecondary);">${d.n} · ${fmtMoney(d.v)}</span>
+            </div>`).join('') : '<p class="field-note">Sem dados.</p>'}
+        </div>
+        <div>
+          <h4 style="font-size:12.5px; margin:0 0 8px; color:var(--textPrimary);">Por banco e tipo de operação</h4>
+          ${porBanco.map(([b,n])=>`<div style="display:flex; justify-content:space-between; font-size:12px; padding:3px 0;"><span>${b}</span><span style="color:var(--textSecondary);">${n}</span></div>`).join('')}
+          <div style="height:8px;"></div>
+          ${porOperacao.map(([o,n])=>`<div style="display:flex; justify-content:space-between; font-size:12px; padding:3px 0; color:var(--textMuted);"><span>${o}</span><span>${n}</span></div>`).join('')}
+        </div>
+      </div>
+
+      <button class="btn-ghost" style="font-size:12px; margin-top:6px;" onclick="
+        const d=document.getElementById('${containerId}-detalhe');
+        const abrindo = d.style.display==='none';
+        d.style.display = abrindo ? 'block' : 'none';
+        this.textContent = abrindo ? 'Esconder processos' : 'Ver os ${recentes.length} processos, um a um';
+      ">Ver os ${recentes.length} processos, um a um</button>
+      <div id="${containerId}-detalhe" style="display:none; margin-top:10px;">
+        ${recentes.sort((a,b)=>(b.data_ajuizamento||'').localeCompare(a.data_ajuizamento||'')).map(p=>{
+          const dias = diasEntre(p.data_operacao, p.data_ajuizamento);
+          return `<div class="panel" style="padding:10px 14px; margin-bottom:8px; cursor:pointer;" onclick="abrirDetalhe('${p.id}')">
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">
+              <b style="font-size:12.5px;">${p.nome_cliente}</b>
+              <span class="badge badge-${p.classificacao_risco}">${p.classificacao_risco}</span>
+            </div>
+            <div style="font-size:11.5px; color:var(--textSecondary); margin-top:3px;">
+              ${p.banco} · ${p.motivo} · ${p.tipo_operacao||'—'}
+            </div>
+            <div style="font-size:11px; color:var(--textMuted); margin-top:3px;">
+              Operação: ${fmtDate(p.data_operacao)} (${fmtMoney(p.valor_operacao)}) → Ajuizamento: ${fmtDate(p.data_ajuizamento)} ${dias!=null ? `· ${dias} dias depois` : ''}
+            </div>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>
+  `;
+  el.innerHTML = html;
+}
+
 async function carregarDashboard(){
+  renderPainel15Dias('painel-15d-dashboard');
   const ativos = processosCache.filter(p=>(p.status_processo||'ATIVO')==='ATIVO');
   const total = ativos.length;
   const valorTotal = ativos.reduce((s,p)=>s+(Number(p.valor_risco)||0),0);
@@ -1685,6 +1811,7 @@ function renderBarrasValor(container, itens, onClickItem){
 }
 
 async function carregarCompliance(){
+  renderPainel15Dias('painel-15d-compliance');
   await carregarProvisionamentoPercentuais();
   carregarExposicaoConsolidada();
   carregarLogAuditoriaRisco();
