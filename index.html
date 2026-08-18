@@ -1892,7 +1892,7 @@ function renderGraficoExposicao(linhas, projecaoQtd, projecaoValor, foiRecortado
   const gridLines = [0, 0.25, 0.5, 0.75, 1].map(f=>{
     const v = maxY*f;
     return `<line x1="${padL}" y1="${y(v).toFixed(1)}" x2="${W-padR}" y2="${y(v).toFixed(1)}" stroke="var(--border)" stroke-width="1"/>
-            <text x="${padL-8}" y="${(y(v)+3).toFixed(1)}" font-size="9" fill="var(--textSecondary)" text-anchor="end">${v.toFixed(1)}%</text>`;
+            <text x="${padL-8}" y="${(y(v)+3).toFixed(1)}" font-family="Poppins, sans-serif" font-size="9" fill="var(--textSecondary)" text-anchor="end">${v.toFixed(1)}%</text>`;
   }).join('');
 
   // "mmm/aa" (com ano de 2 dígitos) evita ambiguidade quando a janela cruza
@@ -1910,7 +1910,7 @@ function renderGraficoExposicao(linhas, projecaoQtd, projecaoValor, foiRecortado
       return labelCurto(d.toISOString().slice(0,10))+'*';
     }));
   const labelSvg = labels.map((lb,i)=>
-    `<text x="0" y="0" font-size="9.5" fill="var(--textSecondary)" text-anchor="end" transform="translate(${x(i).toFixed(1)},${H-padB+14}) rotate(-40)">${lb}</text>`
+    `<text x="0" y="0" font-family="Poppins, sans-serif" font-size="9.5" fill="var(--textSecondary)" text-anchor="end" transform="translate(${x(i).toFixed(1)},${H-padB+14}) rotate(-40)">${lb}</text>`
   ).join('');
 
   const pontinhos = (pontos, cor, labels, valores, sufixo) => pontos.map((p,i)=>
