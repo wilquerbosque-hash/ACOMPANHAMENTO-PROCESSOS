@@ -1424,12 +1424,12 @@ function renderPainel15Dias(containerId){
   const corteStr = corte.toISOString().slice(0,10);
   const hojeStr = hoje.toISOString().slice(0,10);
 
-  const recentes = processosCache.filter(p => p.data_ajuizamento && p.data_ajuizamento >= corteStr && p.data_ajuizamento <= hojeStr);
+  const recentes = processosCache.filter(p => p.criado_em && p.criado_em.slice(0,10) >= corteStr && p.criado_em.slice(0,10) <= hojeStr);
 
   if(!recentes.length){
     el.innerHTML = `<div class="panel" style="border-color:var(--konsiTeal); margin-bottom:20px;">
       <h3 style="margin-bottom:4px;">Últimos ${DIAS_JANELA_ALERTA} dias <span style="font-size:11px; font-weight:400; color:var(--textSecondary);">(${fmtDate(corteStr)} a ${fmtDate(hojeStr)})</span></h3>
-      <p class="field-note" style="margin:6px 0 0;">Nenhuma ação ajuizada registrada nesse período ainda.</p>
+      <p class="field-note" style="margin:6px 0 0;">Nenhum processo cadastrado nesse período ainda.</p>
     </div>`;
     return;
   }
@@ -1465,17 +1465,17 @@ function renderPainel15Dias(containerId){
 
   const html = `
     <div class="panel" style="border-color:var(--konsiTeal); margin-bottom:20px;">
-      <h3 style="margin-bottom:4px;">Últimos ${DIAS_JANELA_ALERTA} dias <span style="font-size:11px; font-weight:400; color:var(--textSecondary);">(${fmtDate(corteStr)} a ${fmtDate(hojeStr)}) · ${recentes.length} ação(ões) ajuizada(s)</span></h3>
-      <p style="font-size:12px; color:var(--textSecondary); margin:2px 0 14px;">Recorte pra apoiar decisão jurídica rápida — o que entrou de novo recentemente, de onde veio e como está se comportando.</p>
+      <h3 style="margin-bottom:4px;">Últimos ${DIAS_JANELA_ALERTA} dias <span style="font-size:11px; font-weight:400; color:var(--textSecondary);">(${fmtDate(corteStr)} a ${fmtDate(hojeStr)}) · ${recentes.length} processo(s) cadastrado(s)</span></h3>
+      <p style="font-size:12px; color:var(--textSecondary); margin:2px 0 14px;">Recorte pra apoiar decisão jurídica rápida — o que foi cadastrado recentemente no sistema, de onde veio e como está se comportando.</p>
 
       ${alertas.length ? alertas.map(([motivo,d])=>`
         <div style="background:var(--erroBg); border:1px solid var(--erro); border-radius:8px; padding:10px 14px; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">
-          <div style="font-size:12.5px; color:var(--erro);">⚠ <b>${d.n} ações</b> por "<b>${motivo}</b>" nos últimos ${DIAS_JANELA_ALERTA} dias (limite de referência: ${LIMITE_ACOES_MESMO_MOTIVO}) — ${fmtMoney(d.v)} em valor de operação. Pode indicar padrão que justifique atuação jurídica específica.</div>
+          <div style="font-size:12.5px; color:var(--erro);">⚠ <b>${d.n} processos</b> cadastrados por "<b>${motivo}</b>" nos últimos ${DIAS_JANELA_ALERTA} dias (limite de referência: ${LIMITE_ACOES_MESMO_MOTIVO}) — ${fmtMoney(d.v)} em valor de operação. Pode indicar padrão que justifique atuação jurídica específica.</div>
           <button class="btn-secondary" style="width:auto; font-size:11px;" onclick="irParaProcessosComFiltro('f-motivo','${motivo}')">Ver processos</button>
         </div>`).join('') : ''}
 
       <div class="cards-row" style="margin-bottom:14px;">
-        <div class="kpi-card"><div><div class="label">Ações ajuizadas</div><div class="value">${recentes.length}</div></div></div>
+        <div class="kpi-card"><div><div class="label">Processos cadastrados</div><div class="value">${recentes.length}</div></div></div>
         <div class="kpi-card"><div><div class="label">Valor das operações</div><div class="value">${fmtMoney(valorTotalOperacoes)}</div></div></div>
         <div class="kpi-card"><div><div class="label">Tempo médio operação → ajuizamento</div><div class="value">${tempoMedio!=null ? tempoMedio+' dias' : '—'}</div></div></div>
         <div class="kpi-card"><div><div class="label">% com evidência (já definida)</div><div class="value">${pctEvidencia!=null ? pctEvidencia+'%' : '—'}</div></div></div>
@@ -1504,7 +1504,7 @@ function renderPainel15Dias(containerId){
         this.textContent = abrindo ? 'Esconder processos' : 'Ver os ${recentes.length} processos, um a um';
       ">Ver os ${recentes.length} processos, um a um</button>
       <div id="${containerId}-detalhe" style="display:none; margin-top:10px;">
-        ${recentes.sort((a,b)=>(b.data_ajuizamento||'').localeCompare(a.data_ajuizamento||'')).map(p=>{
+        ${recentes.sort((a,b)=>(b.criado_em||'').localeCompare(a.criado_em||'')).map(p=>{
           const dias = diasEntre(p.data_operacao, p.data_ajuizamento);
           return `<div class="panel" style="padding:10px 14px; margin-bottom:8px; cursor:pointer;" onclick="abrirDetalhe('${p.id}')">
             <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">
@@ -1515,7 +1515,7 @@ function renderPainel15Dias(containerId){
               ${p.banco} · ${p.motivo} · ${p.tipo_operacao||'—'}
             </div>
             <div style="font-size:11px; color:var(--textMuted); margin-top:3px;">
-              Operação: ${fmtDate(p.data_operacao)} (${fmtMoney(p.valor_operacao)}) → Ajuizamento: ${fmtDate(p.data_ajuizamento)} ${dias!=null ? `· ${dias} dias depois` : ''}
+              Cadastrado em: ${fmtDate((p.criado_em||'').slice(0,10))} · Operação: ${fmtDate(p.data_operacao)} (${fmtMoney(p.valor_operacao)}) → Ajuizamento: ${fmtDate(p.data_ajuizamento)} ${dias!=null ? `· ${dias} dias depois` : ''}
             </div>
           </div>`;
         }).join('')}
