@@ -805,10 +805,11 @@
     <p class="field-note" style="margin-top:-6px;">Baseado na metodologia interna de classificação de risco da Konsi. Responda em ordem — cada pergunta só aparece se for relevante diante da resposta anterior.</p>
 
     <div id="qr-q1" class="panel" style="margin-bottom:10px;">
-      <label style="font-weight:600;">1. Já existe sentença desfavorável neste processo (mesmo cabendo recurso), ou identificamos um erro flagrante de alto valor?</label>
-      <div style="margin-top:8px; display:flex; gap:18px;">
-        <label><input type="radio" name="qr1" value="SIM" onchange="atualizarQuestionarioRisco()"> Sim</label>
-        <label><input type="radio" name="qr1" value="NAO" onchange="atualizarQuestionarioRisco()"> Não</label>
+      <label style="font-weight:600;">1. Já existe sentença ou acórdão neste processo?</label>
+      <div style="margin-top:8px; display:flex; flex-direction:column; gap:8px;">
+        <label><input type="radio" name="qr1" value="DESFAVORAVEL" onchange="atualizarQuestionarioRisco()"> Sim, desfavorável — o autor ganhou, na sentença ou no acórdão (ou identificamos erro flagrante de alto valor) — mesmo cabendo recurso</label>
+        <label><input type="radio" name="qr1" value="FAVORAVEL" onchange="atualizarQuestionarioRisco()"> Sim, favorável — nosso lado ganhou, na sentença ou no acórdão — mesmo cabendo recurso</label>
+        <label><input type="radio" name="qr1" value="NAO" onchange="atualizarQuestionarioRisco()"> Ainda não há sentença nem acórdão</label>
       </div>
     </div>
 
@@ -2610,8 +2611,10 @@ function atualizarQuestionarioRisco(){
   mostrar('qr-q4a', chegouAQ4 && q4==='SIM');
   mostrar('qr-q4b', chegouAQ4 && q4==='NAO');
 
-  if(q1==='SIM'){
-    mostrarResultadoQuestionario('CRITICO', 'Já existe sentença desfavorável ou erro flagrante de alto valor identificado.');
+  if(q1==='DESFAVORAVEL'){
+    mostrarResultadoQuestionario('CRITICO', 'Já existe sentença ou acórdão desfavorável (o autor ganhou) ou erro flagrante de alto valor identificado.');
+  } else if(q1==='FAVORAVEL'){
+    mostrarResultadoQuestionario('BAIXO', 'Já existe sentença ou acórdão favorável (nosso lado ganhou) — mesmo cabendo recurso, a chance de reversão é significativamente menor.');
   } else if(q1==='NAO' && q2==='SIM'){
     mostrarResultadoQuestionario('ALTO', 'Falha operacional identificada, diretamente atribuível à Konsi.');
   } else if(q1==='NAO' && q2==='NAO' && q3==='SIM' && q3b==='NAO'){
