@@ -3286,4 +3286,30 @@ async function alterarStatusUsuario(user_id, ativo){
 async function alterarPermissoesUsuario(user_id, is_admin){
   if(!confirm(is_admin ? 'Tornar este usuário administrador?' : 'Remover a permissão de administrador deste usuário?')) return;
   try{
-    await cham
+    await chamarAdminUsuarios({ action:'editar_permissoes', user_id, is_admin });
+    toast('Permissões atualizadas.');
+    await carregarUsuarios();
+  }catch(e){ toast('Erro: '+e.message); }
+}
+
+async function excluirUsuario(user_id){
+  if(!confirm('Excluir este usuário definitivamente? Essa ação não pode ser desfeita. Se o usuário já tiver processos ou tarefas vinculados a ele, a exclusão pode ser bloqueada — nesse caso, use "Desativar" em vez de excluir.')) return;
+  try{
+    await chamarAdminUsuarios({ action:'excluir', user_id });
+    toast('Usuário excluído.');
+    await carregarUsuarios();
+    await carregarUsuariosAtivos();
+  }catch(e){ toast('Erro: '+e.message); }
+}
+
+// Registra o service worker do PWA — habilita "Adicionar à tela inicial"
+// no celular. Falha silenciosa de propósito: navegadores mais antigos ou
+// sem suporte não devem quebrar o uso normal do sistema.
+if('serviceWorker' in navigator){
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js').catch(e => console.warn('Service worker não registrado:', e));
+  });
+}
+</script>
+</body>
+</html>
