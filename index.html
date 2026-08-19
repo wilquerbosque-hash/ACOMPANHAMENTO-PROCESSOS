@@ -602,7 +602,7 @@
           <option value="COM_EVIDENCIA_NAO_UTILIZADA">Com evidência — não utilizada</option>
           <option value="COM_EVIDENCIA_UTILIZADA">Com evidência — utilizada</option>
         </select>
-        <input type="text" id="f-busca" placeholder="Buscar por nome ou nº processo">
+        <input type="text" id="f-busca" placeholder="Buscar por nome, nº processo ou ADE">
         <span style="font-size:12px; color:var(--textSecondary); align-self:center;">Ajuizado entre</span>
         <input type="date" id="f-ajuizamento-de" title="Ajuizado a partir de">
         <span style="font-size:12px; color:var(--textSecondary); align-self:center;">e</span>
@@ -629,9 +629,11 @@
             </select>
           </div>
           <div class="pager-btns">
+            <button id="pag-processos-primeira" onclick="irParaPaginaProcessos('primeira')" title="Primeira página">« Primeira</button>
             <button id="pag-processos-anterior" onclick="mudarPaginaProcessos(-1)">‹ Anterior</button>
             <span id="pag-processos-atual">Página 1</span>
             <button id="pag-processos-proxima" onclick="mudarPaginaProcessos(1)">Próxima ›</button>
+            <button id="pag-processos-ultima" onclick="irParaPaginaProcessos('ultima')" title="Última página">Última »</button>
           </div>
         </div>
       </div>
@@ -1317,7 +1319,7 @@ function renderTabelaProcessos(){
     (!statusProc || (p.status_processo||'ATIVO')===statusProc) &&
     (!origemCadastro || (p.origem_cadastro||'MANUAL')===origemCadastro) &&
     (!evidencias || (p.situacao_evidencias||'AGUARDANDO_CONTESTACAO')===evidencias) &&
-    (!busca || (p.nome_cliente||'').toLowerCase().includes(busca) || (p.numero_processo||'').includes(busca)) &&
+    (!busca || (p.nome_cliente||'').toLowerCase().includes(busca) || (p.numero_processo||'').includes(busca) || String(p.ade||'').includes(busca)) &&
     (!ajuizDe || (p.data_ajuizamento && p.data_ajuizamento >= ajuizDe)) &&
     (!ajuizAte || (p.data_ajuizamento && p.data_ajuizamento <= ajuizAte)) &&
     (!cadastroDe || (p.criado_em && p.criado_em.slice(0,10) >= cadastroDe)) &&
@@ -1350,12 +1352,21 @@ function renderTabelaProcessos(){
     ? `${inicio+1}–${Math.min(inicio+porPagina, filtrado.length)} de ${filtrado.length} processos`
     : '0 processos';
   document.getElementById('pag-processos-atual').textContent = `Página ${paginaProcessosAtual} de ${totalPaginas}`;
+  document.getElementById('pag-processos-primeira').disabled = paginaProcessosAtual <= 1;
   document.getElementById('pag-processos-anterior').disabled = paginaProcessosAtual <= 1;
   document.getElementById('pag-processos-proxima').disabled = paginaProcessosAtual >= totalPaginas;
+  document.getElementById('pag-processos-ultima').disabled = paginaProcessosAtual >= totalPaginas;
 }
 
 function mudarPaginaProcessos(delta){
   paginaProcessosAtual += delta;
+  renderTabelaProcessos();
+}
+
+function irParaPaginaProcessos(destino){
+  // Manda pra um valor bem alto e deixa a própria renderTabelaProcessos
+  // corrigir pro total real de páginas (ela já faz esse ajuste sozinha).
+  paginaProcessosAtual = destino === 'primeira' ? 1 : Number.MAX_SAFE_INTEGER;
   renderTabelaProcessos();
 }
 
