@@ -68,6 +68,8 @@
   .btn-secondary{ background:var(--surfaceCardAlt); color:var(--textPrimary); border:1px solid var(--border); padding:10px 16px; }
   .btn-secondary:hover{ background:#2A2823; }
   .btn-ghost{ background:transparent; color:var(--konsiTealLight); padding:8px 10px; }
+  .tab-15d{ background:transparent; border:1px solid var(--border); color:var(--textSecondary); padding:6px 14px; border-radius:7px; font-size:12px; }
+  .tab-15d.active{ background:var(--konsiTeal); border-color:var(--konsiTeal); color:#08130F; }
   .btn-danger{ background:var(--erroBg); color:var(--erro); padding:9px 14px; }
   #login-error{ color:var(--erro); font-size:13px; margin:-6px 0 12px; display:none;}
 
@@ -1415,6 +1417,21 @@ function diasEntre(dataA, dataB){
   return Math.round(ms / 86400000);
 }
 
+function togglePainel15d(id){
+  const el = document.getElementById(id);
+  const seta = document.getElementById(id+'-seta');
+  const abrindo = el.style.display === 'none';
+  el.style.display = abrindo ? 'block' : 'none';
+  if(seta) seta.textContent = abrindo ? '▴' : '▾';
+}
+
+function mudarAbaPainel15d(containerId, aba){
+  ['motivo','banco','operacao','cohort'].forEach(a=>{
+    document.getElementById(`${containerId}-tab-${a}`).style.display = a===aba ? 'block' : 'none';
+    document.getElementById(`${containerId}-tabbtn-${a}`).classList.toggle('active', a===aba);
+  });
+}
+
 function renderPainel15Dias(containerId){
   const el = document.getElementById(containerId);
   if(!el) return;
@@ -1486,49 +1503,74 @@ function renderPainel15Dias(containerId){
   const porBanco = agrupar('banco');
   const porOperacao = agrupar('tipo_operacao');
 
+  const valorTotalAlertas = alertas.reduce((s,[,d])=>s+d.n,0);
+
   const html = `
     <div class="panel" style="border-color:var(--konsiTeal); margin-bottom:20px;">
-      <h3 style="margin-bottom:4px;">Últimos ${DIAS_JANELA_ALERTA} dias <span style="font-size:11px; font-weight:400; color:var(--textSecondary);">(${fmtDate(corteStr)} a ${fmtDate(hojeStr)}) · ${recentes.length} processo(s) cadastrado(s)</span></h3>
-      <p style="font-size:12px; color:var(--textSecondary); margin:2px 0 14px;">Recorte pra apoiar decisão jurídica rápida — o que foi cadastrado recentemente no sistema, de onde veio e como está se comportando.</p>
+      <div style="display:flex; justify-content:space-between; align-items:baseline; flex-wrap:wrap; gap:6px; margin-bottom:2px;">
+        <h3 style="margin-bottom:0;">Últimos ${DIAS_JANELA_ALERTA} dias</h3>
+        <span style="font-size:11px; color:var(--textSecondary);">${fmtDate(corteStr)} a ${fmtDate(hojeStr)} · ${recentes.length} processo(s) cadastrado(s)</span>
+      </div>
 
-      ${alertas.length ? alertas.map(([motivo,d])=>`
-        <div style="background:var(--erroBg); border:1px solid var(--erro); border-radius:8px; padding:10px 14px; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">
-          <div style="font-size:12.5px; color:var(--erro);">⚠ <b>${d.n} processos</b> cadastrados por "<b>${motivo}</b>" nos últimos ${DIAS_JANELA_ALERTA} dias (limite de referência: ${LIMITE_ACOES_MESMO_MOTIVO}) — ${fmtMoney(d.v)} em valor de operação. Pode indicar padrão que justifique atuação jurídica específica.</div>
-          <button class="btn-secondary" style="width:auto; font-size:11px;" onclick="irParaProcessosComFiltro('f-motivo','${motivo}')">Ver processos</button>
-        </div>`).join('') : ''}
+      ${alertas.length ? `
+        <div style="background:var(--erroBg); border:1px solid var(--erro); border-radius:8px; padding:10px 14px; margin:10px 0; cursor:pointer;" onclick="togglePainel15d('${containerId}-alertas')">
+          <div style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
+            <div style="font-size:12.5px; color:var(--erro);">⚠ <b>${alertas.length} motivo(s)</b> acima do limite de referência (${valorTotalAlertas} processos no total)</div>
+            <span id="${containerId}-alertas-seta" style="color:var(--erro); font-size:11px;">▾</span>
+          </div>
+        </div>
+        <div id="${containerId}-alertas" style="display:none; margin-bottom:10px;">
+          ${alertas.map(([motivo,d])=>`
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; font-size:12px; padding:7px 12px; border-left:2px solid var(--erro); margin-bottom:4px; flex-wrap:wrap;">
+              <span>${motivo} — ${d.n} processos · ${fmtMoney(d.v)}</span>
+              <button class="btn-ghost" style="font-size:11px; padding:3px 10px;" onclick="event.stopPropagation(); irParaProcessosComFiltro('f-motivo','${motivo}')">Ver</button>
+            </div>`).join('')}
+        </div>
+      ` : ''}
 
-      <div class="cards-row" style="margin-bottom:6px;">
+      <div class="cards-row" style="margin:10px 0 6px;">
         <div class="kpi-card"><div><div class="label">Processos cadastrados</div><div class="value">${recentes.length}</div></div></div>
         <div class="kpi-card"><div><div class="label">Valor das operações</div><div class="value">${fmtMoney(valorTotalOperacoes)}</div></div></div>
         <div class="kpi-card"><div><div class="label">Tempo médio operação → ajuizamento</div><div class="value">${tempoMedio!=null ? tempoMedio+' dias' : '—'}</div></div></div>
         <div class="kpi-card"><div><div class="label">% com evidência (já definida)</div><div class="value">${pctEvidencia!=null ? pctEvidencia+'%' : '—'}</div></div></div>
       </div>
+
       ${temposSuspeitos.length ? `
-        <p class="field-note" style="color:var(--alerta); margin:0 0 14px;">
-          ⚠ ${temposSuspeitos.length} processo(s) excluído(s) do cálculo do tempo médio por data suspeita (diferença negativa ou maior que 10 anos) —
-          confira: ${temposSuspeitos.map(t=>t.p.numero_processo).join(', ')}. Provavelmente é erro de digitação em "Data da operação" ou "Data de ajuizamento".
-        </p>` : ''}
+        <div style="font-size:11.5px; color:var(--alerta); margin:2px 0 14px; cursor:pointer; display:flex; align-items:center; gap:5px;" onclick="togglePainel15d('${containerId}-suspeitas')">
+          ⚠ ${temposSuspeitos.length} processo(s) com data suspeita, fora do cálculo do tempo médio
+          <span id="${containerId}-suspeitas-seta" style="font-size:10px;">▾</span>
+        </div>
+        <div id="${containerId}-suspeitas" style="display:none; font-size:11px; color:var(--textSecondary); background:var(--surfaceCardAlt); border-radius:8px; padding:10px 12px; margin:-8px 0 14px; line-height:1.7;">
+          ${temposSuspeitos.map(t=>t.p.numero_processo).join(', ')}. Provavelmente é erro de digitação em "Data da operação" ou "Data de ajuizamento".
+        </div>
+      ` : ''}
 
-      <h4 style="font-size:12.5px; margin:14px 0 8px; color:var(--textPrimary);">Cohort — por mês da operação</h4>
-      ${cohortOrdenado.length ? cohortOrdenado.map(([mes,d])=>`
-        <div style="display:flex; justify-content:space-between; font-size:12px; padding:4px 0; border-bottom:1px solid var(--border);">
-          <span>${fmtMesAno(mes+'-01')}</span>
-          <span style="color:var(--textSecondary);">${d.total} operaç${d.total===1?'ão':'ões'} · ${d.contestadas} já contestada${d.contestadas===1?'':'s'}</span>
-        </div>`).join('') : '<p class="field-note">Sem data de operação preenchida nos processos deste período.</p>'}
+      <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:10px;">
+        <button class="tab-15d active" id="${containerId}-tabbtn-motivo" onclick="mudarAbaPainel15d('${containerId}','motivo')">Motivo</button>
+        <button class="tab-15d" id="${containerId}-tabbtn-banco" onclick="mudarAbaPainel15d('${containerId}','banco')">Banco</button>
+        <button class="tab-15d" id="${containerId}-tabbtn-operacao" onclick="mudarAbaPainel15d('${containerId}','operacao')">Operação</button>
+        <button class="tab-15d" id="${containerId}-tabbtn-cohort" onclick="mudarAbaPainel15d('${containerId}','cohort')">Cohort</button>
+      </div>
 
-      <div class="grid-2" style="margin:14px 0 6px;">
-        <div>
-          <h4 style="font-size:12.5px; margin:0 0 8px; color:var(--textPrimary);">Por motivo</h4>
-          ${porMotivo && Object.keys(porMotivo).length ? Object.entries(porMotivo).sort((a,b)=>b[1].n-a[1].n).map(([m,d])=>`
-            <div style="display:flex; justify-content:space-between; font-size:12px; padding:4px 0; border-bottom:1px solid var(--border);">
+      <div class="panel" style="background:var(--surfaceCardAlt); margin-bottom:6px;">
+        <div id="${containerId}-tab-motivo">
+          ${Object.keys(porMotivo).length ? Object.entries(porMotivo).sort((a,b)=>b[1].n-a[1].n).map(([m,d])=>`
+            <div style="display:flex; justify-content:space-between; font-size:12px; padding:5px 0; border-bottom:1px solid var(--border);">
               <span>${m}</span><span style="color:var(--textSecondary);">${d.n} · ${fmtMoney(d.v)}</span>
             </div>`).join('') : '<p class="field-note">Sem dados.</p>'}
         </div>
-        <div>
-          <h4 style="font-size:12.5px; margin:0 0 8px; color:var(--textPrimary);">Por banco e tipo de operação</h4>
-          ${porBanco.map(([b,n])=>`<div style="display:flex; justify-content:space-between; font-size:12px; padding:3px 0;"><span>${b}</span><span style="color:var(--textSecondary);">${n}</span></div>`).join('')}
-          <div style="height:8px;"></div>
-          ${porOperacao.map(([o,n])=>`<div style="display:flex; justify-content:space-between; font-size:12px; padding:3px 0; color:var(--textMuted);"><span>${o}</span><span>${n}</span></div>`).join('')}
+        <div id="${containerId}-tab-banco" style="display:none;">
+          ${porBanco.map(([b,n])=>`<div style="display:flex; justify-content:space-between; font-size:12px; padding:5px 0; border-bottom:1px solid var(--border);"><span>${b}</span><span style="color:var(--textSecondary);">${n}</span></div>`).join('')}
+        </div>
+        <div id="${containerId}-tab-operacao" style="display:none;">
+          ${porOperacao.map(([o,n])=>`<div style="display:flex; justify-content:space-between; font-size:12px; padding:5px 0; border-bottom:1px solid var(--border);"><span>${o}</span><span style="color:var(--textSecondary);">${n}</span></div>`).join('')}
+        </div>
+        <div id="${containerId}-tab-cohort" style="display:none;">
+          ${cohortOrdenado.length ? cohortOrdenado.map(([mes,d])=>`
+            <div style="display:flex; justify-content:space-between; font-size:12px; padding:5px 0; border-bottom:1px solid var(--border);">
+              <span>${fmtMesAno(mes+'-01')}</span>
+              <span style="color:var(--textSecondary);">${d.total} operaç${d.total===1?'ão':'ões'} · ${d.contestadas} já contestada${d.contestadas===1?'':'s'}</span>
+            </div>`).join('') : '<p class="field-note">Sem data de operação preenchida nos processos deste período.</p>'}
         </div>
       </div>
 
