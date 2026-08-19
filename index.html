@@ -1693,27 +1693,49 @@ async function carregarDashboard(){
 async function carregarAtualizacoesRecentes(){
   const el = document.getElementById('lista-atualizacoes-recentes');
   if(!el) return;
-  const { data, error } = await sb
-    .from('movimentacoes_processo')
-    .select('id, data_movimentacao, descricao, origem, criado_em, processo_id, processos_judiciais(numero_processo, nome_cliente, banco), usuarios_perfil(nome_exibicao)')
-    .order('criado_em', { ascending: false })
-    .limit(8);
 
-  if(error || !data || !data.length){
-    el.innerHTML = emptyState('Nenhuma movimentação registrada ainda', 'As atualizações identificadas manualmente ou pelo robô do DataJud vão aparecer aqui.');
+  const [movResp, djenResp] = await Promise.all([
+    sb.from('movimentacoes_processo')
+      .select('data_movimentacao, descricao, origem, criado_em, processos_judiciais(numero_processo, nome_cliente, banco), usuarios_perfil(nome_exibicao)')
+      .order('criado_em', { ascending: false })
+      .limit(8),
+    sb.from('comunicacoes_djen')
+      .select('data_disponibilizacao, tipo_comunicacao, resultado_sugerido, criado_em, processos_judiciais(numero_processo, nome_cliente, banco)')
+      .order('criado_em', { ascending: false })
+      .limit(8),
+  ]);
+
+  const itensMov = (movResp.data||[]).map(m=>({
+    data: m.data_movimentacao, criado_em: m.criado_em, p: m.processos_judiciais||{},
+    origemLabel: m.origem==='ROBO_DATAJUD' ? 'DataJud' : null,
+    descricao: m.descricao,
+    responsavel: m.origem==='ROBO_DATAJUD' ? 'Identificado automaticamente (DataJud/CNJ)' : (m.usuarios_perfil?.nome_exibicao || 'Responsável não identificado'),
+  }));
+  // O DJEN grava numa tabela própria (comunicacoes_djen), não em
+  // movimentacoes_processo — sem isso, essas novidades nunca apareciam aqui,
+  // mesmo já estando disponíveis (e gerando tarefa) em Acompanhamentos.
+  const itensDjen = (djenResp.data||[]).map(c=>({
+    data: c.data_disponibilizacao, criado_em: c.criado_em, p: c.processos_judiciais||{},
+    origemLabel: 'DJEN',
+    descricao: c.resultado_sugerido ? `Possível resultado identificado: ${c.resultado_sugerido}` : (c.tipo_comunicacao || 'Comunicação no DJEN'),
+    responsavel: 'Identificado automaticamente (DJEN)',
+  }));
+
+  const todos = [...itensMov, ...itensDjen]
+    .sort((a,b)=>(b.criado_em||'').localeCompare(a.criado_em||''))
+    .slice(0,8);
+
+  if(!todos.length){
+    el.innerHTML = emptyState('Nenhuma movimentação registrada ainda', 'As atualizações identificadas manualmente ou pelos robôs (DataJud/DJEN) vão aparecer aqui.');
     return;
   }
 
-  el.innerHTML = `<ul class="timeline">${data.map(m=>{
-    const p = m.processos_judiciais || {};
-    const isRobo = m.origem === 'ROBO_DATAJUD';
-    const responsavel = isRobo ? 'Identificado automaticamente (DataJud/CNJ)' : (m.usuarios_perfil?.nome_exibicao || 'Responsável não identificado');
-    return `<li>
-      <div class="tdate">${fmtDate(m.data_movimentacao)} ${isRobo ? '<span class="badge-robo" title="Identificado automaticamente via API do DataJud/CNJ">NOVO · DataJud</span>' : ''}</div>
-      <div class="tdesc"><strong>${p.numero_processo || ''}</strong> — ${p.nome_cliente || ''} (${p.banco || ''})<br>${m.descricao}</div>
-      <div class="tresp">${responsavel}</div>
-    </li>`;
-  }).join('')}</ul>`;
+  el.innerHTML = `<ul class="timeline">${todos.map(m=>`
+    <li>
+      <div class="tdate">${fmtDate(m.data)} ${m.origemLabel ? `<span class="badge-robo" title="Identificado automaticamente">NOVO · ${m.origemLabel}</span>` : ''}</div>
+      <div class="tdesc"><strong>${m.p.numero_processo || ''}</strong> — ${m.p.nome_cliente || ''} (${m.p.banco || ''})<br>${m.descricao}</div>
+      <div class="tresp">${m.responsavel}</div>
+    </li>`).join('')}</ul>`;
 }
 
 function diasEntre(d1, d2){
@@ -3264,30 +3286,4 @@ async function alterarStatusUsuario(user_id, ativo){
 async function alterarPermissoesUsuario(user_id, is_admin){
   if(!confirm(is_admin ? 'Tornar este usuário administrador?' : 'Remover a permissão de administrador deste usuário?')) return;
   try{
-    await chamarAdminUsuarios({ action:'editar_permissoes', user_id, is_admin });
-    toast('Permissões atualizadas.');
-    await carregarUsuarios();
-  }catch(e){ toast('Erro: '+e.message); }
-}
-
-async function excluirUsuario(user_id){
-  if(!confirm('Excluir este usuário definitivamente? Essa ação não pode ser desfeita. Se o usuário já tiver processos ou tarefas vinculados a ele, a exclusão pode ser bloqueada — nesse caso, use "Desativar" em vez de excluir.')) return;
-  try{
-    await chamarAdminUsuarios({ action:'excluir', user_id });
-    toast('Usuário excluído.');
-    await carregarUsuarios();
-    await carregarUsuariosAtivos();
-  }catch(e){ toast('Erro: '+e.message); }
-}
-
-// Registra o service worker do PWA — habilita "Adicionar à tela inicial"
-// no celular. Falha silenciosa de propósito: navegadores mais antigos ou
-// sem suporte não devem quebrar o uso normal do sistema.
-if('serviceWorker' in navigator){
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('sw.js').catch(e => console.warn('Service worker não registrado:', e));
-  });
-}
-</script>
-</body>
-</html>
+    await cham
