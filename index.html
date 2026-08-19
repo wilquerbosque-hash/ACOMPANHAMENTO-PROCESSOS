@@ -1468,12 +1468,20 @@ function renderPainel15Dias(containerId){
 
   // Proteção: uma data digitada errada (ano trocado, etc.) não pode mais
   // estragar a média inteira — acima de 10 anos entre operação e
-  // ajuizamento é claramente erro de cadastro, não dado real. Esses casos
-  // ficam de fora da média, mas são sinalizados pra alguém corrigir.
+  // ajuizamento é claramente erro de cadastro NA MAIORIA dos motivos. Exceção:
+  // "NÃO RECONHECE" costuma envolver empréstimos bem antigos questionados só
+  // agora (inclusive raiando prescrição) — lapso grande aí é normal, não erro.
+  // Data invertida (ajuizamento antes da operação) nunca faz sentido, pra
+  // nenhum motivo, então essa checagem vale sempre.
   const DIAS_MAX_RAZOAVEL = 3650;
+  const dataEhSuspeita = (p, dias) => {
+    if(dias < 0) return true;
+    if(p.motivo === 'NÃO RECONHECE') return false;
+    return dias > DIAS_MAX_RAZOAVEL;
+  };
   const temposBrutos = recentes.map(p=>({ p, dias: diasEntre(p.data_operacao, p.data_ajuizamento) }));
-  const temposValidos = temposBrutos.filter(t=>t.dias!=null && t.dias>=0 && t.dias<=DIAS_MAX_RAZOAVEL);
-  const temposSuspeitos = temposBrutos.filter(t=>t.dias!=null && (t.dias<0 || t.dias>DIAS_MAX_RAZOAVEL));
+  const temposValidos = temposBrutos.filter(t=>t.dias!=null && !dataEhSuspeita(t.p, t.dias));
+  const temposSuspeitos = temposBrutos.filter(t=>t.dias!=null && dataEhSuspeita(t.p, t.dias));
   const tempoMedio = temposValidos.length ? Math.round(temposValidos.reduce((a,s)=>a+s.dias,0)/temposValidos.length) : null;
 
   const comEvidencia = recentes.filter(p=>['COM_EVIDENCIA_UTILIZADA','COM_EVIDENCIA_NAO_UTILIZADA'].includes(p.situacao_evidencias)).length;
@@ -1534,16 +1542,6 @@ function renderPainel15Dias(containerId){
         <div class="kpi-card"><div><div class="label">Tempo médio operação → ajuizamento</div><div class="value">${tempoMedio!=null ? tempoMedio+' dias' : '—'}</div></div></div>
         <div class="kpi-card"><div><div class="label">% com evidência (já definida)</div><div class="value">${pctEvidencia!=null ? pctEvidencia+'%' : '—'}</div></div></div>
       </div>
-
-      ${temposSuspeitos.length ? `
-        <div style="font-size:11.5px; color:var(--alerta); margin:2px 0 14px; cursor:pointer; display:flex; align-items:center; gap:5px;" onclick="togglePainel15d('${containerId}-suspeitas')">
-          ⚠ ${temposSuspeitos.length} processo(s) com data suspeita, fora do cálculo do tempo médio
-          <span id="${containerId}-suspeitas-seta" style="font-size:10px;">▾</span>
-        </div>
-        <div id="${containerId}-suspeitas" style="display:none; font-size:11px; color:var(--textSecondary); background:var(--surfaceCardAlt); border-radius:8px; padding:10px 12px; margin:-8px 0 14px; line-height:1.7;">
-          ${temposSuspeitos.map(t=>t.p.numero_processo).join(', ')}. Provavelmente é erro de digitação em "Data da operação" ou "Data de ajuizamento".
-        </div>
-      ` : ''}
 
       <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:10px;">
         <button class="tab-15d active" id="${containerId}-tabbtn-motivo" onclick="mudarAbaPainel15d('${containerId}','motivo')">Motivo</button>
@@ -2927,6 +2925,23 @@ function fc(label, value){
   return `<div class="field-card"><div class="fc-label">${label}</div><div class="fc-value">${value}</div></div>`;
 }
 function renderDetView(p){
+  // Observação sobre o intervalo entre operação e ajuizamento — não é mais
+  // exibida como alerta na tela inicial, fica só aqui, no processo em si.
+  // "NÃO RECONHECE" costuma envolver empréstimos antigos questionados só
+  // agora (raiando prescrição), então um lapso grande aí não é tratado como
+  // problema de digitação, só informado como contexto.
+  let observacaoData = '';
+  if(p.data_operacao && p.data_ajuizamento){
+    const dias = diasEntre(p.data_operacao, p.data_ajuizamento);
+    if(dias!=null && dias<0){
+      observacaoData = `<div class="field-note" style="background:var(--alertaBg); border:1px solid var(--alerta); border-radius:8px; padding:8px 12px; margin:8px 0; color:var(--alerta);">⚠ Observação: a data de ajuizamento está registrada antes da data da operação — vale conferir se alguma das duas foi digitada errada.</div>`;
+    } else if(dias!=null && dias>3650){
+      observacaoData = p.motivo === 'NÃO RECONHECE'
+        ? `<div class="field-note" style="background:var(--alertaBg); border:1px solid var(--alerta); border-radius:8px; padding:8px 12px; margin:8px 0; color:var(--alerta);">⚠ Observação: mais de 10 anos entre a operação e o ajuizamento — usual em ações de "Não reconhece" sobre empréstimos antigos, inclusive raiando prescrição. Não é necessariamente erro de cadastro.</div>`
+        : `<div class="field-note" style="background:var(--alertaBg); border:1px solid var(--alerta); border-radius:8px; padding:8px 12px; margin:8px 0; color:var(--alerta);">⚠ Observação: mais de 10 anos entre a operação e o ajuizamento — vale conferir se as datas foram digitadas corretamente.</div>`;
+    }
+  }
+
   const resumoHtml = p.resumo_simples
     ? `<div class="painel-resumo-simples">
          <div class="painel-resumo-simples-label">Resumo da situação${p.resumo_atualizado_em ? ` · atualizado em ${fmtDate(p.resumo_atualizado_em.slice(0,10))}` : ''}</div>
@@ -2950,6 +2965,9 @@ function renderDetView(p){
       ${fc('Valor da operação', fmtMoney(p.valor_operacao))}
       ${fc('Data da operação', fmtDate(p.data_operacao))}
       ${fc('Data de ajuizamento', fmtDate(p.data_ajuizamento))}
+    </div>
+    ${observacaoData}
+    <div class="fields-grid">
       ${fc('Classe processual', p.classe_processual||'—')}
       ${fc('Assunto (DataJud)', p.assunto_principal||'—')}
       ${fc('Órgão julgador', p.orgao_julgador||'—')}
