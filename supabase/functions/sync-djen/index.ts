@@ -52,6 +52,15 @@ function normalizarTexto(s: string): string {
 // "improcedente" contém a palavra "procedente" dentro dela — se checasse
 // "procedente" primeiro, ia errar toda sentença improcedente.
 // Isso é só uma SUGESTÃO pra revisão humana — nunca aplicada sozinha.
+//
+// IMPORTANTE — por que isso só existe aqui, e não na sync-datajud: a API
+// pública do DataJud devolve só METADADOS estruturados do processo (classe,
+// órgão julgador, movimentações por código), nunca o texto/trecho da decisão.
+// Só o DJEN traz o recorte informativo do CNJ com o texto da intimação/
+// decisão em si — por isso a detecção de resultado por palavra-chave é
+// necessariamente exclusiva desta função. Se um dia o DataJud passar a
+// devolver o teor da decisão, esta lógica poderia migrar/duplicar para lá,
+// mas hoje não há como fazer isso a partir da sync-datajud.
 function detectarResultadoNoTexto(textoOriginal: string): string | null {
   const t = normalizarTexto(textoOriginal);
 
@@ -211,11 +220,23 @@ async function processarUmProcessoDjen(admin: any, processo: any) {
     if (sugestao) melhorSugestao = sugestao; // fica com a última encontrada, tipicamente a mais recente também
   }
 
-  // Preenche campos da capa processual só se o DataJud não tiver preenchido
-  // (nunca sobrescreve um dado que já existe vindo de outra fonte).
+  // Preenche campos da capa processual só se ainda estiverem vazios (nunca
+  // sobrescreve um dado que já existe, seja de onde vier). Isso é
+  // complemento PROPOSITAL à sync-datajud: o DataJud é a fonte estruturada
+  // "canônica", mas às vezes não retorna classe/órgão julgador ou vem
+  // incompleto — o DJEN, que consulta as comunicações publicadas, muitas
+  // vezes já tem esse dado disponível. classe_processual_fonte/
+  // orgao_julgador_fonte (migração 34) registram qual robô preencheu, pra
+  // dar pra auditar depois qual fonte está de fato alimentando cada processo.
   const camposFaltando: Record<string, any> = {};
-  if (!processo.classe_processual && maisRecente?.nomeClasse) camposFaltando.classe_processual = maisRecente.nomeClasse;
-  if (!processo.orgao_julgador && maisRecente?.nomeOrgao) camposFaltando.orgao_julgador = maisRecente.nomeOrgao;
+  if (!processo.classe_processual && maisRecente?.nomeClasse) {
+    camposFaltando.classe_processual = maisRecente.nomeClasse;
+    camposFaltando.classe_processual_fonte = "DJEN";
+  }
+  if (!processo.orgao_julgador && maisRecente?.nomeOrgao) {
+    camposFaltando.orgao_julgador = maisRecente.nomeOrgao;
+    camposFaltando.orgao_julgador_fonte = "DJEN";
+  }
   if (Object.keys(camposFaltando).length) {
     await admin.from("processos_judiciais").update(camposFaltando).eq("id", processo.id);
   }
