@@ -9,6 +9,10 @@
 // função é separada da sync-datajud: se o DJEN mudar de formato ou ficar
 // fora do ar, isso não afeta a sincronização que já funciona bem hoje.
 //
+// Se SLACK_WEBHOOK_URL estiver configurado (secret), essa função também
+// avisa um canal do Slack em três situações: nova comunicação do DJEN,
+// mais de 9 processos pelo mesmo motivo em 15 dias, e tarefa atrasada.
+//
 // Deploy: supabase/functions/sync-djen/index.ts
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -68,6 +72,95 @@ function detectarResultadoNoTexto(textoOriginal: string): string | null {
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// Notifica o Slack via Incoming Webhook — falha silenciosa de propósito
+// (se o Slack estiver fora do ar, ou o secret não estiver configurado, isso
+// nunca deve impedir o robô de continuar seu trabalho normal).
+const SLACK_WEBHOOK_URL = Deno.env.get("SLACK_WEBHOOK_URL");
+async function notificarSlack(texto: string) {
+  if (!SLACK_WEBHOOK_URL) return;
+  try {
+    await fetch(SLACK_WEBHOOK_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: texto }),
+    });
+  } catch (e) {
+    console.warn("Notificação Slack não enviada:", e);
+  }
+}
+
+// Mesmo critério usado no painel "Últimos 15 dias" do sistema: mais de 9
+// processos cadastrados pelo mesmo motivo em 15 dias (exceto Superendividamento)
+// pode indicar padrão que justifique atuação jurídica específica.
+// Só avisa uma vez por dia por motivo (tabela slack_picos_notificados).
+const LIMITE_ACOES_MESMO_MOTIVO = 9;
+async function verificarAlertaMotivo(admin: any) {
+  const hoje = new Date();
+  const corte = new Date(hoje);
+  corte.setDate(corte.getDate() - 15);
+  const corteStr = corte.toISOString().slice(0, 10);
+  const hojeStr = hoje.toISOString().slice(0, 10);
+
+  const { data: recentes } = await admin
+    .from("processos_judiciais")
+    .select("motivo, criado_em")
+    .gte("criado_em", corteStr)
+    .lte("criado_em", hojeStr + "T23:59:59");
+
+  const porMotivo: Record<string, number> = {};
+  (recentes || []).forEach((p: any) => {
+    const m = p.motivo || "(sem motivo)";
+    porMotivo[m] = (porMotivo[m] || 0) + 1;
+  });
+
+  for (const [motivo, n] of Object.entries(porMotivo)) {
+    if (motivo === "SUPERENDIVIDAMENTO" || n <= LIMITE_ACOES_MESMO_MOTIVO) continue;
+    const { data: jaNotificado } = await admin
+      .from("slack_picos_notificados")
+      .select("motivo")
+      .eq("motivo", motivo)
+      .eq("data_referencia", hojeStr)
+      .maybeSingle();
+    if (jaNotificado) continue;
+
+    await notificarSlack(`⚠️ *${n} processos* cadastrados por "*${motivo}*" nos últimos 15 dias (limite de referência: ${LIMITE_ACOES_MESMO_MOTIVO}). Pode indicar padrão que justifique atuação jurídica específica — confira o painel "Últimos 15 dias" no sistema.`);
+    await admin.from("slack_picos_notificados").insert({ motivo, data_referencia: hojeStr });
+  }
+}
+
+// Avisa sobre tarefas que passaram do prazo e ainda não foram notificadas —
+// marca notificado_atraso_slack_em pra nunca avisar a mesma tarefa duas vezes.
+async function verificarTarefasAtrasadas(admin: any) {
+  const hojeStr = new Date().toISOString().slice(0, 10);
+  const { data: atrasadas } = await admin
+    .from("tarefas_acompanhamento")
+    .select("id, titulo, data_prazo, processos_judiciais(numero_processo)")
+    .lt("data_prazo", hojeStr)
+    .in("status", ["PENDENTE", "ATRASADA"])
+    .is("notificado_atraso_slack_em", null)
+    .limit(20); // teto por execução, pra não estourar um lote gigante de uma vez
+
+  for (const t of atrasadas || []) {
+    const numero = t.processos_judiciais?.numero_processo || "";
+    await notificarSlack(`🔴 Tarefa *atrasada* (prazo era ${t.data_prazo})${numero ? ` — processo ${numero}` : ""}: ${t.titulo}`);
+    await admin.from("tarefas_acompanhamento").update({ notificado_atraso_slack_em: new Date().toISOString() }).eq("id", t.id);
+  }
+}
+
+// Mesmo mecanismo usado na sync-datajud: busca pelo nome em vez de gravar um
+// ID fixo, pra continuar funcionando mesmo que a conta seja recriada um dia.
+async function buscarResponsavelPadrao(admin: any): Promise<string | null> {
+  const { data } = await admin
+    .from("usuarios_perfil")
+    .select("id")
+    .ilike("nome_exibicao", "%Juliana%Bacelar%")
+    .eq("ativo", true)
+    .limit(1)
+    .maybeSingle();
+  if (!data) console.warn("Responsável padrão (Juliana Bacelar) não encontrado — tarefa criada sem responsável.");
+  return data?.id ?? null;
 }
 
 async function consultarDjen(numeroProcesso: string, tentativa = 1): Promise<any> {
@@ -138,13 +231,16 @@ async function processarUmProcessoDjen(admin: any, processo: any) {
       const titulo = melhorSugestao
         ? `Possível resultado identificado no DJEN: ${melhorSugestao} — confirmar e atualizar Situação Atual`
         : `Nova comunicação no DJEN: ${maisRecente.tipoComunicacao || "publicação"}`;
+      const responsavel_id = await buscarResponsavelPadrao(admin);
       await admin.from("tarefas_acompanhamento").insert({
         processo_id: processo.id,
         titulo,
         data_prazo: new Date().toISOString().slice(0, 10),
         status: "PENDENTE",
         origem: "ROBO_DATAJUD",
+        responsavel_id,
       });
+      await notificarSlack(`📋 ${melhorSugestao ? `Possível resultado no *DJEN*: ${melhorSugestao}` : `Nova comunicação no *DJEN*`} — processo ${processo.numero_processo}. Tarefa criada no sistema.`);
     }
   }
 
@@ -203,6 +299,12 @@ Deno.serve(async (req) => {
     }
 
     await admin.from("djen_sync_status").update({ ultima_execucao_resumo: resultado }).eq("id", 1);
+
+    // Roda uma vez por execução (já throttlada em 240min) — não precisa de
+    // agendamento próprio, aproveita o mesmo ciclo do sync-djen.
+    await verificarAlertaMotivo(admin);
+    await verificarTarefasAtrasadas(admin);
+
     return new Response(JSON.stringify(resultado), { status: 200 });
   } catch (e) {
     return new Response(JSON.stringify({ error: e.message }), { status: 500 });
