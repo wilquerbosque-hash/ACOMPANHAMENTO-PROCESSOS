@@ -125,21 +125,21 @@
     .form-actions{ flex-wrap:wrap; }
   }
   @media (max-width:700px){
-    /* Só nessas duas tabelas — as demais (Compliance, Métricas, Usuários)
+    /* As demais tabelas (Métricas, Usuários, top-processos do Compliance)
        continuam com rolagem horizontal por enquanto. */
-    #tbl-processos, #tbl-tarefas{ display:block; width:100%; }
-    #tbl-processos thead, #tbl-tarefas thead{ display:none; }
-    #tbl-processos tbody, #tbl-tarefas tbody{ display:block; width:100%; }
-    #tbl-processos tr, #tbl-tarefas tr{
+    #tbl-processos, #tbl-tarefas, #tbl-exposicao-mensal{ display:block; width:100%; }
+    #tbl-processos thead, #tbl-tarefas thead, #tbl-exposicao-mensal thead{ display:none; }
+    #tbl-processos tbody, #tbl-tarefas tbody, #tbl-exposicao-mensal tbody{ display:block; width:100%; }
+    #tbl-processos tr, #tbl-tarefas tr, #tbl-exposicao-mensal tr{
       display:block; background:var(--surfaceCard); border:1px solid var(--border);
       border-radius:10px; padding:10px 12px; margin-bottom:10px;
     }
-    #tbl-processos td:not([colspan]), #tbl-tarefas td:not([colspan]){
+    #tbl-processos td:not([colspan]), #tbl-tarefas td:not([colspan]), #tbl-exposicao-mensal td:not([colspan]){
       display:flex; justify-content:space-between; align-items:center; gap:10px;
       padding:5px 0; border:none; text-align:right; white-space:normal; max-width:none;
     }
     #tbl-processos td.truncate, #tbl-tarefas td.truncate{ overflow:visible; text-overflow:clip; white-space:normal; }
-    #tbl-processos td::before, #tbl-tarefas td::before{
+    #tbl-processos td::before, #tbl-tarefas td::before, #tbl-exposicao-mensal td::before{
       content:attr(data-label); font-size:10.5px; color:var(--textSecondary); font-weight:600; text-align:left; flex-shrink:0;
     }
     #tbl-tarefas td[data-label=""]{ display:block; text-align:left; }
@@ -523,11 +523,21 @@
         <div class="grid-2" id="exposicao-projecao-cards" style="margin-bottom:20px;"></div>
         <h4 id="exposicao-chart-titulo" style="font-size:13px; margin:0 0 10px; color:var(--textPrimary);">Evolução mensal · real e projetada</h4>
         <div id="exposicao-chart" style="margin-bottom:20px;"></div>
-        <h4 style="font-size:13px; margin:0 0 10px; color:var(--textPrimary);">Detalhamento mês a mês</h4>
-        <div class="table-wrap"><table class="table-compact">
-          <thead><tr><th>Mês</th><th>Vendidos</th><th>Contestados</th><th>% qtd</th><th>Produção</th><th>Contestado R$</th><th>% valor</th></tr></thead>
-          <tbody id="exposicao-tbody"></tbody>
-        </table></div>
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:10px;">
+          <h4 style="font-size:13px; margin:0; color:var(--textPrimary);">Detalhamento mês a mês</h4>
+          <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+            <select id="exposicao-filtro-mes" style="display:none; font-size:12px;" onchange="filtrarExposicaoTbody()">
+              <option value="">Todos os meses</option>
+            </select>
+            <button class="btn-ghost" id="exposicao-toggle-btn" style="font-size:12px;" onclick="toggleExposicaoDetalhe()">Ver detalhamento mês a mês</button>
+          </div>
+        </div>
+        <div id="exposicao-detalhe-wrap" style="display:none;">
+          <div class="table-wrap"><table id="tbl-exposicao-mensal" class="table-compact">
+            <thead><tr><th>Mês</th><th>Vendidos</th><th>Contestados</th><th>% qtd</th><th>Produção</th><th>Contestado R$</th><th>% valor</th></tr></thead>
+            <tbody id="exposicao-tbody"></tbody>
+          </table></div>
+        </div>
         <p class="field-note" style="margin-top:12px;">Projeção calculada por tendência a partir dos meses já cadastrados na aba Métricas — é uma estimativa para apoiar o provisionamento, não uma previsão garantida.</p>
       </div>
 
@@ -2107,16 +2117,39 @@ async function carregarExposicaoConsolidada(){
   renderGraficoExposicao(linhasJanela, projecaoQtd, projecaoValor, linhas.length > MESES_JANELA_GRAFICO);
 
   document.getElementById('exposicao-tbody').innerHTML = linhas.map(l=>`
-    <tr>
-      <td>${fmtMesAno(l.mes+'-01')}</td>
-      <td>${l.vendidos.toLocaleString('pt-BR')}</td>
-      <td>${l.contestados.toLocaleString('pt-BR')}</td>
-      <td>${l.pctQtd.toFixed(2)}%</td>
-      <td>${fmtMoney(l.producao)}</td>
-      <td>${fmtMoney(l.valorContestado)}</td>
-      <td>${l.pctValor.toFixed(2)}%</td>
+    <tr data-mes="${l.mes}">
+      <td data-label="Mês">${fmtMesAno(l.mes+'-01')}</td>
+      <td data-label="Vendidos">${l.vendidos.toLocaleString('pt-BR')}</td>
+      <td data-label="Contestados">${l.contestados.toLocaleString('pt-BR')}</td>
+      <td data-label="% qtd">${l.pctQtd.toFixed(2)}%</td>
+      <td data-label="Produção">${fmtMoney(l.producao)}</td>
+      <td data-label="Contestado R$">${fmtMoney(l.valorContestado)}</td>
+      <td data-label="% valor">${l.pctValor.toFixed(2)}%</td>
     </tr>
   `).join('');
+
+  const seletorMes = document.getElementById('exposicao-filtro-mes');
+  const mesSelecionado = seletorMes.value;
+  seletorMes.innerHTML = '<option value="">Todos os meses</option>' +
+    [...linhas].sort((a,b)=>b.mes.localeCompare(a.mes)).map(l=>`<option value="${l.mes}">${fmtMesAno(l.mes+'-01')}</option>`).join('');
+  seletorMes.value = mesSelecionado; // preserva a seleção ao recarregar
+}
+
+function toggleExposicaoDetalhe(){
+  const wrap = document.getElementById('exposicao-detalhe-wrap');
+  const btn = document.getElementById('exposicao-toggle-btn');
+  const filtro = document.getElementById('exposicao-filtro-mes');
+  const abrindo = wrap.style.display === 'none';
+  wrap.style.display = abrindo ? 'block' : 'none';
+  filtro.style.display = abrindo ? 'inline-block' : 'none';
+  btn.textContent = abrindo ? 'Esconder detalhamento' : 'Ver detalhamento mês a mês';
+}
+
+function filtrarExposicaoTbody(){
+  const mes = document.getElementById('exposicao-filtro-mes').value;
+  document.querySelectorAll('#exposicao-tbody tr').forEach(tr=>{
+    tr.style.display = (!mes || tr.dataset.mes === mes) ? '' : 'none';
+  });
 }
 
 function renderGraficoExposicao(linhas, projecaoQtd, projecaoValor, foiRecortado){
