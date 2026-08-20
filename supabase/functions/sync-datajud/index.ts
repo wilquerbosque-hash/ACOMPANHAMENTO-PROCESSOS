@@ -227,7 +227,11 @@ async function criarTarefaInspecao(admin: ReturnType<typeof createClient>, proce
 // (disparado na hora, quando alguém cadastra um processo manualmente).
 async function processarUmProcesso(
   admin: ReturnType<typeof createClient>,
-  processo: { id: string; numero_processo: string; tribunal: string; situacao_atual: string; classificacao_risco: string; data_ajuizamento?: string | null },
+  processo: {
+    id: string; numero_processo: string; tribunal: string; situacao_atual: string;
+    classificacao_risco: string; data_ajuizamento?: string | null;
+    classe_processual?: string | null; orgao_julgador?: string | null;
+  },
 ) {
   const consulta = await consultarDatajud(processo.tribunal, processo.numero_processo);
   const erros: any[] = [];
@@ -295,13 +299,22 @@ async function processarUmProcesso(
 // Usa "??" de propósito: se a capa não trouxer um campo (undefined ou null),
 // o campo correspondente fica de fora do payload e o valor já salvo no banco
 // não é apagado — só atualizamos quando o DataJud realmente informa algo.
-function montarPayloadMetadados(processo: { data_ajuizamento?: string | null }, capa?: any) {
+//
+// classe_processual e orgao_julgador também podem vir da sync-djen (ver
+// aquele arquivo) — o DataJud é a fonte "canônica"/estruturada, mas nem
+// sempre traz o dado ou traz incompleto; quando isso acontece, o DJEN
+// complementa. Essa duplicação de capacidade é PROPOSITAL, não um bug —
+// cada robô só preenche se o campo ainda estiver vazio (nunca um sobrescreve
+// o outro). classe_processual_fonte/orgao_julgador_fonte (migração 34)
+// registram qual dos dois efetivamente preencheu, pra dar pra auditar.
+function montarPayloadMetadados(
+  processo: { data_ajuizamento?: string | null; classe_processual?: string | null; orgao_julgador?: string | null },
+  capa?: any,
+) {
   const payload: Record<string, unknown> = {
     datajud_ultima_consulta: new Date().toISOString(),
     datajud_ultimo_erro: null,
-    classe_processual: capa?.classe ?? undefined,
     assunto_principal: capa?.assuntos?.length ? capa.assuntos.join("; ") : undefined,
-    orgao_julgador: capa?.orgaoJulgador ?? undefined,
     grau_instancia: capa?.grau ?? undefined,
     nivel_sigilo: capa?.nivelSigilo ?? undefined,
     valor_causa: capa?.valorCausa ?? undefined,
@@ -309,6 +322,16 @@ function montarPayloadMetadados(processo: { data_ajuizamento?: string | null }, 
     liminar: capa?.liminar ?? undefined,
     datajud_metadados: capa?.bruto ?? undefined,
   };
+  // Só preenche classe/órgão (e marca a fonte) se o processo ainda não tinha
+  // esse dado — de qualquer fonte, DataJud ou DJEN.
+  if (!processo.classe_processual && capa?.classe) {
+    payload.classe_processual = capa.classe;
+    payload.classe_processual_fonte = "DATAJUD";
+  }
+  if (!processo.orgao_julgador && capa?.orgaoJulgador) {
+    payload.orgao_julgador = capa.orgaoJulgador;
+    payload.orgao_julgador_fonte = "DATAJUD";
+  }
   // Só preenche data_ajuizamento se o processo ainda não tinha essa data
   // cadastrada — nunca sobrescreve o que já foi preenchido manualmente.
   if (!processo.data_ajuizamento && capa?.dataAjuizamento) {
@@ -354,7 +377,7 @@ async function executarSincronizacao(admin: ReturnType<typeof createClient>) {
   // por todos os processos ativos ao longo de vários logins.
   const { data: processos, error: erroProcessos } = await admin
     .from("processos_judiciais")
-    .select("id, numero_processo, tribunal, situacao_atual, classificacao_risco, data_ajuizamento")
+    .select("id, numero_processo, tribunal, situacao_atual, classificacao_risco, data_ajuizamento, classe_processual, orgao_julgador")
     .eq("status_processo", "ATIVO")
     .order("datajud_ultima_consulta", { ascending: true, nullsFirst: true })
     .limit(TAMANHO_LOTE_POR_EXECUCAO);
@@ -422,7 +445,7 @@ Deno.serve(async (req) => {
     if (processoId) {
       const { data: processo, error: erroBusca } = await admin
         .from("processos_judiciais")
-        .select("id, numero_processo, tribunal, situacao_atual, classificacao_risco, data_ajuizamento")
+        .select("id, numero_processo, tribunal, situacao_atual, classificacao_risco, data_ajuizamento, classe_processual, orgao_julgador")
         .eq("id", processoId)
         .single();
 
