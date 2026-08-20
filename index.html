@@ -616,6 +616,7 @@
         <select id="f-banco"><option value="">Todos os bancos</option></select>
         <select id="f-tribunal"><option value="">Todos os tribunais</option></select>
         <select id="f-motivo"><option value="">Todos os motivos</option></select>
+        <select id="f-situacao"><option value="">Todas as situações</option></select>
         <select id="f-risco"><option value="">Todos os riscos</option></select>
         <select id="f-status-processo">
           <option value="">Ativos e arquivados</option>
@@ -1080,7 +1081,8 @@ let processosCache = [];
 let processoAtualId = null;
 let paginaProcessosAtual = 1;
 let opcoesCache = { BANCO:[], CONVENIO:[], OPERACAO:[], MOTIVO:[], SITUACAO_ATUAL:[] };
-let situacoesDesfavoraveisCache = new Set(); // populado por carregarOpcoesDominio(), a partir de opcoes_dominio.desfavoravel_ao_konsi
+let situacoesDesfavoraveisCache = new Set(); // populado por carregarOpcoesDominio(), a partir de opcoes_dominio.resultado_sentenca_konsi='DESFAVORAVEL'
+let situacoesFavoraveisCache = new Set(); // idem, resultado_sentenca_konsi='FAVORAVEL'
 let cohortCache = [];
 let bancoCache = [];
 let metricasCache = [];
@@ -1271,17 +1273,20 @@ async function carregarTudo(){
 }
 
 async function carregarOpcoesDominio(){
-  const { data, error } = await sb.from('opcoes_dominio').select('categoria,valor,desfavoravel_ao_konsi').order('valor');
+  const { data, error } = await sb.from('opcoes_dominio').select('categoria,valor,resultado_sentenca_konsi').order('valor');
   if(error){ toast('Erro ao carregar listas: '+error.message); return; }
   opcoesCache = { BANCO:[], CONVENIO:[], OPERACAO:[], MOTIVO:[], SITUACAO_ATUAL:[] };
-  // Quais situações contam como "desfavorável à Konsi" agora vem do banco
-  // (coluna opcoes_dominio.desfavoravel_ao_konsi), não mais de uma lista
-  // hardcoded aqui — cadastrar uma nova situação desfavorável vira dado, não
-  // mudança de código.
+  // Quais situações representam sentença/acórdão favorável ou desfavorável à
+  // Konsi agora vem do banco (opcoes_dominio.resultado_sentenca_konsi), não
+  // de uma lista hardcoded aqui — cadastrar/reclassificar uma situação vira
+  // dado, não mudança de código. Alimenta tanto o destaque do campo de
+  // condenação quanto o "% de êxito" do dashboard.
   situacoesDesfavoraveisCache = new Set();
+  situacoesFavoraveisCache = new Set();
   (data||[]).forEach(o=>{
     if(opcoesCache[o.categoria]) opcoesCache[o.categoria].push(o.valor);
-    if(o.categoria==='SITUACAO_ATUAL' && o.desfavoravel_ao_konsi) situacoesDesfavoraveisCache.add(o.valor);
+    if(o.categoria==='SITUACAO_ATUAL' && o.resultado_sentenca_konsi==='DESFAVORAVEL') situacoesDesfavoraveisCache.add(o.valor);
+    if(o.categoria==='SITUACAO_ATUAL' && o.resultado_sentenca_konsi==='FAVORAVEL') situacoesFavoraveisCache.add(o.valor);
   });
 }
 
@@ -1329,7 +1334,7 @@ function montarFiltros(){
   const selTribunal = document.getElementById('f-tribunal');
   selTribunal.innerHTML = '<option value="">Todos os tribunais</option>' + tribunais.map(t=>`<option>${t}</option>`).join('');
 
-  ['f-banco','f-tribunal','f-motivo','f-risco','f-busca','f-ajuizamento-de','f-ajuizamento-ate','f-status-processo','f-origem-cadastro','f-evidencias','f-cadastro-de','f-cadastro-ate'].forEach(id=>{
+  ['f-banco','f-tribunal','f-motivo','f-situacao','f-risco','f-busca','f-ajuizamento-de','f-ajuizamento-ate','f-status-processo','f-origem-cadastro','f-evidencias','f-cadastro-de','f-cadastro-ate'].forEach(id=>{
     document.getElementById(id).oninput = ()=>{ paginaProcessosAtual = 1; renderTabelaProcessos(); };
   });
   document.getElementById('pag-processos-tamanho').onchange = ()=>{ paginaProcessosAtual = 1; renderTabelaProcessos(); };
@@ -1339,6 +1344,7 @@ function limparTodosFiltros(){
   document.getElementById('f-banco').value = '';
   document.getElementById('f-tribunal').value = '';
   document.getElementById('f-motivo').value = '';
+  document.getElementById('f-situacao').value = '';
   document.getElementById('f-risco').value = '';
   document.getElementById('f-status-processo').value = 'ATIVO';
   document.getElementById('f-origem-cadastro').value = '';
@@ -1356,6 +1362,7 @@ function renderTabelaProcessos(){
   const banco = document.getElementById('f-banco').value;
   const tribunal = document.getElementById('f-tribunal').value;
   const motivo = document.getElementById('f-motivo').value;
+  const situacao = document.getElementById('f-situacao').value;
   const risco = document.getElementById('f-risco').value;
   const busca = document.getElementById('f-busca').value.toLowerCase();
   const ajuizDe = document.getElementById('f-ajuizamento-de').value;
@@ -1370,6 +1377,7 @@ function renderTabelaProcessos(){
     (!banco || p.banco===banco) &&
     (!tribunal || p.tribunal===tribunal) &&
     (!motivo || p.motivo===motivo) &&
+    (!situacao || p.situacao_atual===situacao) &&
     (!risco || p.classificacao_risco===risco) &&
     (!statusProc || (p.status_processo||'ATIVO')===statusProc) &&
     (!origemCadastro || (p.origem_cadastro||'MANUAL')===origemCadastro) &&
@@ -1707,19 +1715,33 @@ async function carregarDashboard(){
     ? Math.round((comEvidenciaUtilizada + comEvidenciaNaoUtilizada) / totalComMarcacaoDefinida * 100)
     : null;
 
-  // % de êxito considera todos os processos concluídos, mesmo os já arquivados
-  const ganhos = processosCache.filter(p=>p.resultado==='GANHO').length;
-  const perdidos = processosCache.filter(p=>p.resultado==='PERDIDO').length;
-  const parciais = processosCache.filter(p=>p.resultado==='PARCIAL').length;
-  const concluidos = ganhos + perdidos + parciais;
-  const exitoPct = concluidos ? Math.round(ganhos/concluidos*100) : null;
+  // % de êxito — refeito para basear-se na SITUAÇÃO do processo (mesma fonte
+  // usada pra destacar condenação), não mais no campo `resultado` (que era
+  // preenchido manualmente e sem regra fixa). Conta TODOS os processos,
+  // inclusive arquivados, que já têm sentença/acórdão definido (favorável ou
+  // desfavorável). Fica de fora:
+  //   - Superendividamento: risco já nasce zero, não é disputa de mérito.
+  //   - RECURSO PROVIDO/IMPROVIDO/PARCIALMENTE PROVIDO: ambíguo sem saber
+  //     quem recorreu — não entram no cálculo (só ACÓRDÃO FAVORÁVEL/
+  //     DESFAVORÁVEL contam pra fase de acórdão, sem essa ambiguidade).
+  const baseExito = processosCache.filter(p => p.motivo !== 'SUPERENDIVIDAMENTO');
+  const favoraveis = baseExito.filter(p => situacoesFavoraveisCache.has(p.situacao_atual)).length;
+  const desfavoraveis = baseExito.filter(p => situacoesDesfavoraveisCache.has(p.situacao_atual)).length;
+  const comResultadoDefinido = favoraveis + desfavoraveis;
+  const exitoPct = comResultadoDefinido ? Math.round(favoraveis/comResultadoDefinido*100) : null;
+  const tituloExito = `% de êxito = processos com sentença ou acórdão FAVORÁVEL à Konsi ÷ total de processos com sentença ou acórdão já definido (favorável + desfavorável), inclusive arquivados.\n\n` +
+    `Hoje: ${favoraveis} favorável(is) e ${desfavoraveis} desfavorável(is), de ${comResultadoDefinido} com resultado definido.\n\n` +
+    `Não entram nesta conta:\n` +
+    `• Processos de Superendividamento (o valor em risco já nasce zero — não é uma disputa de mérito).\n` +
+    `• Processos ainda sem sentença/acórdão (em andamento).\n` +
+    `• Recurso Provido/Improvido/Parcialmente Provido — o texto sozinho não diz se foi bom ou ruim pra Konsi sem saber quem recorreu; use "Acórdão Favorável"/"Acórdão Desfavorável" pra esses casos entrarem na conta.`;
 
   document.getElementById('kpi-cards').innerHTML = `
     <div class="kpi-card" title="Conta apenas processos com status Ativo"><div><div class="label">Processos ativos</div><div class="value">${total}</div></div><div class="icon-box">${ICON_FOLDER}</div></div>
     <div class="kpi-card" title="Soma o valor em risco apenas dos processos com status Ativo"><div><div class="label">Valor em risco</div><div class="value">${fmtMoney(valorTotal)}</div></div><div class="icon-box">${ICON_COIN}</div></div>
     <div class="kpi-card ${criticos>0?'alert':''}" title="Processos ativos com risco Alto ou Crítico"><div><div class="label">Risco alto/crítico</div><div class="value">${criticos}</div></div><div class="icon-box">${ICON_ALERT}</div></div>
     <div class="kpi-card" title="${totalComMarcacaoDefinida} processo(s) ativo(s) com marcação definida (com ou sem evidência) de ${total} no total. Processos 'Aguardando contestação' não entram nessa conta."><div><div class="label">Processos com evidências</div><div class="value">${pctComEvidencia===null?'—':pctComEvidencia+'%'}</div></div><div class="icon-box">${ICON_SHIELD}</div></div>
-    <div class="kpi-card" title="${concluidos} processos concluídos (ganho, perdido ou parcial), inclusive arquivados"><div><div class="label">% de êxito</div><div class="value">${exitoPct===null?'—':exitoPct+'%'}</div></div><div class="icon-box">${ICON_CLOCK}</div></div>
+    <div class="kpi-card" title="${tituloExito}"><div><div class="label">% de êxito</div><div class="value">${exitoPct===null?'—':exitoPct+'%'}</div></div><div class="icon-box">${ICON_CLOCK}</div></div>
   `;
 
   const porBanco = {};
@@ -1752,6 +1774,7 @@ async function carregarDashboard(){
 
   // popula selects de filtro de motivo/risco
   document.getElementById('f-motivo').innerHTML = '<option value="">Todos os motivos</option>' + [...new Set(processosCache.map(p=>p.motivo).filter(Boolean))].sort().map(m=>`<option value="${m}">${m}</option>`).join('');
+  document.getElementById('f-situacao').innerHTML = '<option value="">Todas as situações</option>' + [...new Set(processosCache.map(p=>p.situacao_atual).filter(Boolean))].sort().map(s=>`<option value="${s}">${s}</option>`).join('');
   document.getElementById('f-risco').innerHTML = '<option value="">Todos os riscos</option>' + ['BAIXO','MEDIO','ALTO','CRITICO'].map(r=>`<option value="${r}">${r}</option>`).join('');
 
   const { data: cohort, error: cohortErr } = await sb.from('vw_cohort_ajuizamento').select('*');
