@@ -526,9 +526,23 @@
         <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:10px;">
           <h4 style="font-size:13px; margin:0; color:var(--textPrimary);">Detalhamento mês a mês</h4>
           <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-            <select id="exposicao-filtro-mes" style="display:none; font-size:12px;" onchange="filtrarExposicaoTbody()">
-              <option value="">Todos os meses</option>
-            </select>
+            <div id="exposicao-filtros-wrap" style="display:none; gap:8px; align-items:center; flex-wrap:wrap;">
+              <select id="exposicao-filtro-mesnum" style="font-size:12px;" onchange="filtrarExposicaoTbody()">
+                <option value="">Mês</option>
+                <option value="01">Janeiro</option><option value="02">Fevereiro</option><option value="03">Março</option>
+                <option value="04">Abril</option><option value="05">Maio</option><option value="06">Junho</option>
+                <option value="07">Julho</option><option value="08">Agosto</option><option value="09">Setembro</option>
+                <option value="10">Outubro</option><option value="11">Novembro</option><option value="12">Dezembro</option>
+              </select>
+              <select id="exposicao-filtro-ano" style="font-size:12px;" onchange="filtrarExposicaoTbody()">
+                <option value="">Ano</option>
+              </select>
+              <button class="btn-ghost" style="font-size:11.5px; padding:6px 10px;" onclick="
+                document.getElementById('exposicao-filtro-mesnum').value='';
+                document.getElementById('exposicao-filtro-ano').value='';
+                filtrarExposicaoTbody();
+              ">Limpar</button>
+            </div>
             <button class="btn-ghost" id="exposicao-toggle-btn" style="font-size:12px;" onclick="toggleExposicaoDetalhe()">Ver detalhamento mês a mês</button>
           </div>
         </div>
@@ -2128,27 +2142,31 @@ async function carregarExposicaoConsolidada(){
     </tr>
   `).join('');
 
-  const seletorMes = document.getElementById('exposicao-filtro-mes');
-  const mesSelecionado = seletorMes.value;
-  seletorMes.innerHTML = '<option value="">Todos os meses</option>' +
-    [...linhas].sort((a,b)=>b.mes.localeCompare(a.mes)).map(l=>`<option value="${l.mes}">${fmtMesAno(l.mes+'-01')}</option>`).join('');
-  seletorMes.value = mesSelecionado; // preserva a seleção ao recarregar
+  const seletorAno = document.getElementById('exposicao-filtro-ano');
+  const anoSelecionado = seletorAno.value;
+  const anosDisponiveis = [...new Set(linhas.map(l=>l.mes.slice(0,4)))].sort((a,b)=>b.localeCompare(a));
+  seletorAno.innerHTML = '<option value="">Ano</option>' + anosDisponiveis.map(a=>`<option value="${a}">${a}</option>`).join('');
+  seletorAno.value = anoSelecionado; // preserva a seleção ao recarregar
 }
 
 function toggleExposicaoDetalhe(){
   const wrap = document.getElementById('exposicao-detalhe-wrap');
   const btn = document.getElementById('exposicao-toggle-btn');
-  const filtro = document.getElementById('exposicao-filtro-mes');
+  const filtros = document.getElementById('exposicao-filtros-wrap');
   const abrindo = wrap.style.display === 'none';
   wrap.style.display = abrindo ? 'block' : 'none';
-  filtro.style.display = abrindo ? 'inline-block' : 'none';
+  filtros.style.display = abrindo ? 'flex' : 'none';
   btn.textContent = abrindo ? 'Esconder detalhamento' : 'Ver detalhamento mês a mês';
 }
 
 function filtrarExposicaoTbody(){
-  const mes = document.getElementById('exposicao-filtro-mes').value;
+  const mesNum = document.getElementById('exposicao-filtro-mesnum').value; // "01".."12"
+  const ano = document.getElementById('exposicao-filtro-ano').value; // "2026"
   document.querySelectorAll('#exposicao-tbody tr').forEach(tr=>{
-    tr.style.display = (!mes || tr.dataset.mes === mes) ? '' : 'none';
+    const [anoLinha, mesLinha] = (tr.dataset.mes||'').split('-'); // "YYYY-MM"
+    const bateAno = !ano || anoLinha === ano;
+    const bateMes = !mesNum || mesLinha === mesNum;
+    tr.style.display = (bateAno && bateMes) ? '' : 'none';
   });
 }
 
