@@ -1753,7 +1753,7 @@ async function carregarDashboard(){
         <div class="bar-row expandable" onclick="toggleMiniCohort(this,'${c.mes_operacao.slice(0,7)}')">
           <div class="bar-label">${mes}/${ano}</div>
           <div class="bar-track"><div class="bar-fill" style="width:${Math.round(c.processos/max*100)}%;"></div></div>
-          <div class="bar-value">${c.processos} · ${c.media_dias_ate_ajuizamento}d</div>
+          <div class="bar-value">${c.processos} · ${formatarAnosMeses(c.media_dias_ate_ajuizamento)}</div>
         </div>
         <div class="mini-cohort-slot"></div>
       </div>`;
@@ -1809,10 +1809,6 @@ async function carregarAtualizacoesRecentes(){
     </li>`).join('')}</ul>`;
 }
 
-function diasEntre(d1, d2){
-  return Math.round((new Date(d2) - new Date(d1)) / 86400000);
-}
-
 function calcularCohortPorCampo(lista, campo){
   const grupos = {};
   lista.forEach(p=>{
@@ -1833,7 +1829,7 @@ function renderMiniBarChart(container, items, corBase){
     <div class="bar-row" style="grid-template-columns:130px 1fr 80px;">
       <div class="bar-label">${i.label}</div>
       <div class="bar-track"><div class="bar-fill" style="width:${Math.round(i.n/max*100)}%; background:${corBase};"></div></div>
-      <div class="bar-value">${i.n} · ${i.media}d</div>
+      <div class="bar-value">${i.n} · ${formatarAnosMeses(i.media)}</div>
     </div>`).join('');
 }
 
@@ -1851,7 +1847,7 @@ function abrirDetalheCohort(){
       <div class="bar-row expandable" onclick="toggleGraficoCompletoCohort(this,'${c.mes_operacao.slice(0,7)}')">
         <div class="bar-label">${mes}/${ano}</div>
         <div class="bar-track"><div class="bar-fill" style="width:${Math.round(c.processos/max*100)}%;"></div></div>
-        <div class="bar-value">${c.processos} · ${c.media_dias_ate_ajuizamento}d</div>
+        <div class="bar-value">${c.processos} · ${formatarAnosMeses(c.media_dias_ate_ajuizamento)}</div>
       </div>
       <div class="full-cohort-slot"></div>
     </div>`;
