@@ -565,6 +565,14 @@
       </div>
 
       <div class="panel">
+        <h3>Condenações — valor médio por tribunal e motivo</h3>
+        <p style="font-size:12px; color:var(--textSecondary); margin:-8px 0 14px;">
+          Só processos com sentença/acórdão desfavorável e valor de condenação já informado. Não entra no cálculo de provisão sugerida (ainda é só analítico) — com poucos casos, a média pode variar bastante; ganha estabilidade conforme mais processos forem concluídos.
+        </p>
+        <div id="compliance-condenacoes"></div>
+      </div>
+
+      <div class="panel">
         <h3>Histórico de alterações de risco</h3>
         <p style="font-size:12px; color:var(--textSecondary); margin:-8px 0 14px;">Toda vez que a classificação de risco de um processo é alterada, fica registrado aqui automaticamente — quem mudou, de quê pra quê, e quando. Últimas 50 alterações.</p>
         <div class="table-wrap"><table class="table-compact">
@@ -918,7 +926,14 @@
             </div>
             <div><label>Valor em risco (R$)</label><input id="det-valor-risco" type="text" inputmode="decimal" placeholder="Ex: 5.000,00"></div>
           </div>
-          <div class="form-row single"><div><label>Situação atual</label><select id="det-situacao" onchange="tratarNovoValorDominio('det-situacao','SITUACAO_ATUAL')"></select></div></div>
+          <div class="form-row single"><div><label>Situação atual</label><select id="det-situacao" onchange="tratarNovoValorDominio('det-situacao','SITUACAO_ATUAL'); aplicarDestaqueCondenacao()"></select></div></div>
+          <div class="form-row single" id="det-condenacao-wrap">
+            <div>
+              <label>Valor da condenação (R$) <span style="font-weight:400; color:var(--textMuted);">— só se já houver sentença/acórdão desfavorável</span></label>
+              <input id="det-valor-condenacao" type="text" inputmode="decimal" placeholder="Ex: 15.000,00">
+              <p class="field-note" style="margin-top:4px;">Diferente do "valor da causa" (que vem do DataJud e é só o valor pedido pelo autor) — aqui é o valor que a Justiça efetivamente definiu. Ainda não entra no cálculo de provisão sugerida — é só analítico, pra mapear média por tribunal e motivo.</p>
+            </div>
+          </div>
           <div class="section-label"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3 4 6v6c0 5 4 8 8 9 4-1 8-4 8-9V6z"/><path d="m9 12 2 2 4-4"/></svg>Evidências enviadas ao banco</div>
           <div class="form-row">
             <div><label>Enviamos evidência de "boa venda"?</label>
@@ -1924,6 +1939,7 @@ async function carregarCompliance(){
   await carregarProvisionamentoPercentuais();
   carregarExposicaoConsolidada();
   carregarLogAuditoriaRisco();
+  renderPainelCondenacoes();
   const ativos = processosCache.filter(p=>(p.status_processo||'ATIVO')==='ATIVO');
   const total = ativos.length;
   const valorTotalRisco = ativos.reduce((s,p)=>s+(Number(p.valor_risco)||0),0);
@@ -2204,6 +2220,67 @@ async function carregarLogAuditoriaRisco(){
       <td>${l.usuarios_perfil?.nome_exibicao || 'Não identificado'}</td>
     </tr>`;
   }).join('');
+}
+
+// ---------------- CONDENAÇÕES: VALOR MÉDIO POR TRIBUNAL/MOTIVO ----------------
+function renderPainelCondenacoes(){
+  const el = document.getElementById('compliance-condenacoes');
+  const comCondenacao = processosCache.filter(p => p.valor_condenacao != null);
+
+  if(!comCondenacao.length){
+    el.innerHTML = emptyState('Nenhuma condenação registrada ainda', 'Preencha "Valor da condenação" na edição de um processo com sentença/acórdão desfavorável para começar a alimentar este painel.');
+    return;
+  }
+
+  const agruparCondenacao = (campo) => {
+    const g = {};
+    comCondenacao.forEach(p=>{
+      const k = p[campo] || '(sem informação)';
+      g[k] = g[k] || { n:0, total:0 };
+      g[k].n++;
+      g[k].total += Number(p.valor_condenacao)||0;
+    });
+    return Object.entries(g)
+      .map(([label,d])=>({ label, n:d.n, total:d.total, media:d.total/d.n }))
+      .sort((a,b)=>b.media-a.media);
+  };
+
+  const porTribunal = agruparCondenacao('tribunal');
+  const porMotivoCond = agruparCondenacao('motivo');
+  const valorTotalGeral = comCondenacao.reduce((s,p)=>s+(Number(p.valor_condenacao)||0),0);
+  const mediaGeral = valorTotalGeral / comCondenacao.length;
+
+  const linhaTabela = (item) => `
+    <tr>
+      <td>${item.label}</td>
+      <td>${item.n}</td>
+      <td>${fmtMoney(item.media)}</td>
+      <td>${fmtMoney(item.total)}</td>
+    </tr>`;
+
+  el.innerHTML = `
+    <div class="cards-row" style="margin-bottom:16px;">
+      <div class="kpi-card"><div><div class="label">Processos com condenação registrada</div><div class="value">${comCondenacao.length}</div></div></div>
+      <div class="kpi-card"><div><div class="label">Valor total das condenações</div><div class="value">${fmtMoney(valorTotalGeral)}</div></div></div>
+      <div class="kpi-card"><div><div class="label">Média geral por processo</div><div class="value">${fmtMoney(mediaGeral)}</div></div></div>
+    </div>
+    <div class="grid-2">
+      <div>
+        <h4 style="font-size:12.5px; margin:0 0 8px; color:var(--textPrimary);">Por tribunal</h4>
+        <div class="table-wrap"><table class="table-compact">
+          <thead><tr><th>Tribunal</th><th>Qtd.</th><th>Média</th><th>Total</th></tr></thead>
+          <tbody>${porTribunal.map(linhaTabela).join('')}</tbody>
+        </table></div>
+      </div>
+      <div>
+        <h4 style="font-size:12.5px; margin:0 0 8px; color:var(--textPrimary);">Por motivo</h4>
+        <div class="table-wrap"><table class="table-compact">
+          <thead><tr><th>Motivo</th><th>Qtd.</th><th>Média</th><th>Total</th></tr></thead>
+          <tbody>${porMotivoCond.map(linhaTabela).join('')}</tbody>
+        </table></div>
+      </div>
+    </div>
+  `;
 }
 
 function exportarComplianceCsv(){
@@ -2524,6 +2601,26 @@ function preencherCampoEvidencias(prefixo, valor){
 // Superendividamento: são casos em que a Konsi não questiona a "boa venda" —
 // o cliente só está endividado e quer renegociar. Não faz sentido computar
 // valor em risco nesses casos, então ele é zerado e travado automaticamente.
+const SITUACOES_DESFAVORAVEIS = ['SENTENÇA PROCEDENTE', 'SENTENÇA PARCIALMENTE PROCEDENTE', 'RECURSO DESFAVORÁVEL (À KONSI)'];
+function aplicarDestaqueCondenacao(){
+  const situacao = document.getElementById('det-situacao').value;
+  const wrap = document.getElementById('det-condenacao-wrap');
+  const campo = document.getElementById('det-valor-condenacao');
+  if(SITUACOES_DESFAVORAVEIS.includes(situacao)){
+    wrap.style.background = 'var(--alertaBg)';
+    wrap.style.border = '1px solid var(--alerta)';
+    wrap.style.borderRadius = '8px';
+    wrap.style.padding = '10px 12px';
+    campo.placeholder = 'Situação desfavorável — informe o valor da condenação, se já definido';
+  } else {
+    wrap.style.background = '';
+    wrap.style.border = '';
+    wrap.style.borderRadius = '';
+    wrap.style.padding = '';
+    campo.placeholder = 'Ex: 15.000,00';
+  }
+}
+
 function aplicarRegraSuperendividamento(prefixo){
   const motivo = document.getElementById(`${prefixo}-motivo`).value;
   const campoValor = document.getElementById(`${prefixo}-valor-risco`);
@@ -2991,6 +3088,7 @@ function renderDetView(p){
       ${fc('Justiça gratuita', p.justica_gratuita==null ? '—' : (p.justica_gratuita ? 'Sim' : 'Não'))}
       ${fc('Liminar', p.liminar==null ? '—' : (p.liminar ? 'Sim' : 'Não'))}
       ${fc('Valor em risco', fmtMoney(p.valor_risco))}
+      ${p.valor_condenacao!=null ? fc('Valor da condenação', fmtMoney(p.valor_condenacao)) : ''}
       ${fc('Evidências enviadas ao banco', `<span class="badge badge-${p.situacao_evidencias||'AGUARDANDO_CONTESTACAO'}">${LABEL_EVIDENCIAS[p.situacao_evidencias]||LABEL_EVIDENCIAS.AGUARDANDO_CONTESTACAO}</span>`)}
       ${fc('Origem do cadastro', p.origem_cadastro==='IMPORTACAO_CSV' ? '<span class="badge-csv">Importação CSV</span>' : 'Manual')}
       ${fc('Cadastrado em', fmtDate((p.criado_em||'').slice(0,10)))}
@@ -3088,6 +3186,8 @@ function abrirEdicaoProcesso(){
   document.getElementById('det-valor-risco').value = fmtNumeroBR(p.valor_risco);
   aplicarRegraSuperendividamento('det');
   preencherSelectDominio('det-situacao','SITUACAO_ATUAL', p.situacao_atual);
+  document.getElementById('det-valor-condenacao').value = fmtNumeroBR(p.valor_condenacao);
+  aplicarDestaqueCondenacao();
   preencherCampoEvidencias('det', p.situacao_evidencias || 'AGUARDANDO_CONTESTACAO');
   document.getElementById('det-resumo-simples').value = p.resumo_simples || '';
   document.getElementById('det-resultado').value = p.resultado || 'EM_ANDAMENTO';
@@ -3121,6 +3221,7 @@ async function salvarAtualizacaoProcesso(){
     situacao_evidencias: calcularSituacaoEvidencias('det'),
     resumo_simples: document.getElementById('det-resumo-simples').value.trim() || null,
     resultado: document.getElementById('det-resultado').value,
+    valor_condenacao: parseNumeroBR(document.getElementById('det-valor-condenacao').value),
     status_processo: document.getElementById('det-status-processo').value
   };
   if(window.__criterioRiscoPendente){
