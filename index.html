@@ -1462,10 +1462,41 @@ function renderPieChart(container, items, formatValue, totalLabel, onItemClick){
 const DIAS_JANELA_ALERTA = 15;
 const LIMITE_ACOES_MESMO_MOTIVO = 9; // acima disso, dispara alerta
 
+// Detecção de data suspeita entre operação e ajuizamento — usada tanto no
+// painel de 15 dias quanto na observação individual do processo, pra nunca
+// ficarem dessincronizadas de novo.
+// O objetivo aqui é medir o tempo REAL entre contratação e questionamento —
+// não é pra "eximir" nenhum motivo da conta. Só exclui o que é impossível,
+// pra qualquer processo, seja qual for o motivo: data invertida, ou uma
+// diferença tão grande que só pode ser erro de digitação (acima de 50 anos).
+// Um gap grande e genuíno (ex: 15 anos, "Não reconhece") continua contando
+// normalmente na média — é dado real, não erro.
+const DIAS_MAX_ABSOLUTO = 18250; // 50 anos — teto absoluto de plausibilidade, sem exceção de motivo
+function dataEhSuspeita(dias){
+  if(dias < 0) return true;
+  return dias > DIAS_MAX_ABSOLUTO;
+}
+
 function diasEntre(dataA, dataB){
   if(!dataA || !dataB) return null;
   const ms = new Date(dataB+'T00:00:00') - new Date(dataA+'T00:00:00');
   return Math.round(ms / 86400000);
+}
+
+// Converte uma quantidade de dias em "X anos e Y meses" — muito mais fácil
+// de interpretar do que um número solto de dias, principalmente quando a
+// diferença é de vários anos.
+function formatarAnosMeses(diasTotal){
+  if(diasTotal==null) return '—';
+  if(diasTotal < 30) return `${diasTotal} dia${diasTotal===1?'':'s'}`;
+  const anos = Math.floor(diasTotal / 365.25);
+  const diasRestantes = diasTotal - Math.round(anos*365.25);
+  let meses = Math.round(diasRestantes / 30.44);
+  let anosAjustados = anos;
+  if(meses >= 12){ anosAjustados++; meses = 0; }
+  if(anosAjustados === 0) return `${meses} ${meses===1?'mês':'meses'}`;
+  if(meses === 0) return `${anosAjustados} ${anosAjustados===1?'ano':'anos'}`;
+  return `${anosAjustados} ${anosAjustados===1?'ano':'anos'} e ${meses} ${meses===1?'mês':'meses'}`;
 }
 
 function togglePainel15d(id){
@@ -1518,21 +1549,12 @@ function renderPainel15Dias(containerId){
   const valorTotalOperacoes = recentes.reduce((s,p)=>s+(Number(p.valor_operacao)||0),0);
 
   // Proteção: uma data digitada errada (ano trocado, etc.) não pode mais
-  // estragar a média inteira — acima de 10 anos entre operação e
-  // ajuizamento é claramente erro de cadastro NA MAIORIA dos motivos. Exceção:
-  // "NÃO RECONHECE" costuma envolver empréstimos bem antigos questionados só
-  // agora (inclusive raiando prescrição) — lapso grande aí é normal, não erro.
-  // Data invertida (ajuizamento antes da operação) nunca faz sentido, pra
-  // nenhum motivo, então essa checagem vale sempre.
-  const DIAS_MAX_RAZOAVEL = 3650;
-  const dataEhSuspeita = (p, dias) => {
-    if(dias < 0) return true;
-    if(p.motivo === 'NÃO RECONHECE') return false;
-    return dias > DIAS_MAX_RAZOAVEL;
-  };
+  // estragar a média inteira — a checagem completa (dataEhSuspeita) já
+  // está definida globalmente, reaproveitada aqui e na observação do
+  // processo individual.
   const temposBrutos = recentes.map(p=>({ p, dias: diasEntre(p.data_operacao, p.data_ajuizamento) }));
-  const temposValidos = temposBrutos.filter(t=>t.dias!=null && !dataEhSuspeita(t.p, t.dias));
-  const temposSuspeitos = temposBrutos.filter(t=>t.dias!=null && dataEhSuspeita(t.p, t.dias));
+  const temposValidos = temposBrutos.filter(t=>t.dias!=null && !dataEhSuspeita(t.dias));
+  const temposSuspeitos = temposBrutos.filter(t=>t.dias!=null && dataEhSuspeita(t.dias));
   const tempoMedio = temposValidos.length ? Math.round(temposValidos.reduce((a,s)=>a+s.dias,0)/temposValidos.length) : null;
 
   const comEvidencia = recentes.filter(p=>['COM_EVIDENCIA_UTILIZADA','COM_EVIDENCIA_NAO_UTILIZADA'].includes(p.situacao_evidencias)).length;
@@ -1590,7 +1612,7 @@ function renderPainel15Dias(containerId){
       <div class="cards-row" style="margin:10px 0 6px;">
         <div class="kpi-card"><div><div class="label">Processos cadastrados</div><div class="value">${recentes.length}</div></div></div>
         <div class="kpi-card"><div><div class="label">Valor das operações</div><div class="value">${fmtMoney(valorTotalOperacoes)}</div></div></div>
-        <div class="kpi-card"><div><div class="label">Tempo médio operação → ajuizamento</div><div class="value">${tempoMedio!=null ? tempoMedio+' dias' : '—'}</div></div></div>
+        <div class="kpi-card"><div><div class="label">Tempo médio operação → ajuizamento</div><div class="value">${tempoMedio!=null ? formatarAnosMeses(tempoMedio) : '—'}</div></div></div>
         <div class="kpi-card"><div><div class="label">% com evidência (já definida)</div><div class="value">${pctEvidencia!=null ? pctEvidencia+'%' : '—'}</div></div></div>
       </div>
 
@@ -1641,7 +1663,7 @@ function renderPainel15Dias(containerId){
               ${p.banco} · ${p.motivo} · ${p.tipo_operacao||'—'}
             </div>
             <div style="font-size:11px; color:var(--textMuted); margin-top:3px;">
-              Cadastrado em: ${fmtDate((p.criado_em||'').slice(0,10))} · Operação: ${fmtDate(p.data_operacao)} (${fmtMoney(p.valor_operacao)}) → Ajuizamento: ${fmtDate(p.data_ajuizamento)} ${dias!=null ? `· ${dias} dias depois` : ''}
+              Cadastrado em: ${fmtDate((p.criado_em||'').slice(0,10))} · Operação: ${fmtDate(p.data_operacao)} (${fmtMoney(p.valor_operacao)}) → Ajuizamento: ${fmtDate(p.data_ajuizamento)} ${dias!=null ? `· ${formatarAnosMeses(dias)} depois` : ''}
             </div>
           </div>`;
         }).join('')}
@@ -3089,18 +3111,15 @@ function fc(label, value){
 function renderDetView(p){
   // Observação sobre o intervalo entre operação e ajuizamento — não é mais
   // exibida como alerta na tela inicial, fica só aqui, no processo em si.
-  // "NÃO RECONHECE" costuma envolver empréstimos antigos questionados só
-  // agora (raiando prescrição), então um lapso grande aí não é tratado como
-  // problema de digitação, só informado como contexto.
+  // Usa a mesma função global (dataEhSuspeita) do painel de 15 dias, pra
+  // nunca ficarem dessincronizadas de novo.
   let observacaoData = '';
   if(p.data_operacao && p.data_ajuizamento){
     const dias = diasEntre(p.data_operacao, p.data_ajuizamento);
     if(dias!=null && dias<0){
       observacaoData = `<div class="field-note" style="background:var(--alertaBg); border:1px solid var(--alerta); border-radius:8px; padding:8px 12px; margin:8px 0; color:var(--alerta);">⚠ Observação: a data de ajuizamento está registrada antes da data da operação — vale conferir se alguma das duas foi digitada errada.</div>`;
-    } else if(dias!=null && dias>3650){
-      observacaoData = p.motivo === 'NÃO RECONHECE'
-        ? `<div class="field-note" style="background:var(--alertaBg); border:1px solid var(--alerta); border-radius:8px; padding:8px 12px; margin:8px 0; color:var(--alerta);">⚠ Observação: mais de 10 anos entre a operação e o ajuizamento — usual em ações de "Não reconhece" sobre empréstimos antigos, inclusive raiando prescrição. Não é necessariamente erro de cadastro.</div>`
-        : `<div class="field-note" style="background:var(--alertaBg); border:1px solid var(--alerta); border-radius:8px; padding:8px 12px; margin:8px 0; color:var(--alerta);">⚠ Observação: mais de 10 anos entre a operação e o ajuizamento — vale conferir se as datas foram digitadas corretamente.</div>`;
+    } else if(dias!=null && dataEhSuspeita(dias)){
+      observacaoData = `<div class="field-note" style="background:var(--alertaBg); border:1px solid var(--alerta); border-radius:8px; padding:8px 12px; margin:8px 0; color:var(--alerta);">⚠ Observação: mais de 50 anos entre a operação e o ajuizamento — isso foge do razoável pra qualquer motivo, quase certamente é erro de digitação em uma das duas datas.</div>`;
     }
   }
 
