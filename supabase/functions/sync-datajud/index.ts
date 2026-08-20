@@ -18,8 +18,9 @@
 //      resumo em linguagem simples é escrito manualmente por alguém do time
 //      ao revisar o processo, não por IA. Não cria uma tarefa nova se já
 //      existir uma aberta esperando revisão para aquele mesmo processo.
-//   5. Não envia e-mail/Slack — a novidade aparece no painel "Atualizações
-//      recentes" (tela inicial) e como tarefa pendente (aba Acompanhamentos).
+//   5. Se SLACK_WEBHOOK_URL estiver configurado (secret), avisa um canal do
+//      Slack quando cria a tarefa — além de continuar aparecendo no painel
+//      "Atualizações recentes" e como tarefa pendente (Acompanhamentos).
 //
 // MODO "PROCESSO ÚNICO": além do fluxo acima (sincronização geral em lote),
 // esta função também aceita ser chamada com { "processo_id": "..." } no
@@ -171,6 +172,23 @@ async function buscarResponsavelPadrao(admin: ReturnType<typeof createClient>): 
   return data?.id ?? null;
 }
 
+// Notifica o Slack via Incoming Webhook — falha silenciosa de propósito
+// (se o Slack estiver fora do ar, ou o secret não estiver configurado, isso
+// nunca deve impedir o robô de continuar seu trabalho normal).
+const SLACK_WEBHOOK_URL = Deno.env.get("SLACK_WEBHOOK_URL");
+async function notificarSlack(texto: string) {
+  if (!SLACK_WEBHOOK_URL) return;
+  try {
+    await fetch(SLACK_WEBHOOK_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: texto }),
+    });
+  } catch (e) {
+    console.warn("Notificação Slack não enviada:", e);
+  }
+}
+
 async function criarTarefaInspecao(admin: ReturnType<typeof createClient>, processo: { id: string; numero_processo: string }) {
   const { data: tarefaAberta } = await admin
     .from("tarefas_acompanhamento")
@@ -195,6 +213,10 @@ async function criarTarefaInspecao(admin: ReturnType<typeof createClient>, proce
     responsavel_id,
     observacao: "Criada automaticamente: o robô do DataJud identificou movimentação nova neste processo. Abra os autos e, se fizer sentido, atualize o campo \"Resumo da situação\" do processo.",
   });
+
+  if (!error) {
+    await notificarSlack(`📋 Nova movimentação no *DataJud* — processo ${processo.numero_processo}. Tarefa de inspeção criada no sistema.`);
+  }
 
   return !error;
 }
