@@ -616,7 +616,6 @@
         <select id="f-banco"><option value="">Todos os bancos</option></select>
         <select id="f-tribunal"><option value="">Todos os tribunais</option></select>
         <select id="f-motivo"><option value="">Todos os motivos</option></select>
-        <select id="f-situacao"><option value="">Todas as situações</option></select>
         <select id="f-risco"><option value="">Todos os riscos</option></select>
         <select id="f-status-processo">
           <option value="">Ativos e arquivados</option>
@@ -913,7 +912,7 @@
         <div class="section-label"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>Dados do processo</div>
         <div id="det-view" style="font-size:13px; line-height:1.9;"></div>
         <div id="det-actions" style="display:flex; gap:8px; margin:10px 0 4px;">
-          <button class="btn-secondary" onclick="abrirEdicaoProcesso()">Editar</button>
+          <button class="btn-secondary" id="det-btn-editar" onclick="abrirEdicaoProcesso()">Editar</button>
           <button class="btn-danger" id="det-btn-excluir" style="display:none;" onclick="excluirProcesso()">Excluir processo</button>
         </div>
 
@@ -952,17 +951,11 @@
             <div><label>Valor em risco (R$)</label><input id="det-valor-risco" type="text" inputmode="decimal" placeholder="Ex: 5.000,00"></div>
           </div>
           <div class="form-row single"><div><label>Situação atual</label><select id="det-situacao" onchange="tratarNovoValorDominio('det-situacao','SITUACAO_ATUAL'); aplicarDestaqueCondenacao()"></select></div></div>
-          <div class="form-row" id="det-condenacao-wrap">
+          <div class="form-row single" id="det-condenacao-wrap">
             <div>
-              <label>Condenação — dano material (R$) <span style="font-weight:400; color:var(--textMuted);">— só se já houver sentença/acórdão desfavorável</span></label>
-              <input id="det-valor-condenacao-material" type="text" inputmode="decimal" placeholder="Ex: 15.000,00">
-            </div>
-            <div>
-              <label>Condenação — dano moral (R$)</label>
-              <input id="det-valor-condenacao-moral" type="text" inputmode="decimal" placeholder="Ex: 5.000,00">
-            </div>
-            <div class="form-row single" style="margin-top:6px;">
-              <p class="field-note">Diferente do "valor da causa" (que vem do DataJud e é só o valor pedido pelo autor) — aqui é o que a Justiça efetivamente concedeu, separado por natureza do dano porque o moral costuma variar por juiz/comarca, sem relação direta com o valor pleiteado, enquanto o material tende a se aproximar do valor em risco. O total (material + moral) é calculado automaticamente. Ainda não entra no cálculo de provisão sugerida — é só analítico, pra mapear deságio médio por tribunal e motivo.</p>
+              <label>Valor da condenação (R$) <span style="font-weight:400; color:var(--textMuted);">— só se já houver sentença/acórdão desfavorável</span></label>
+              <input id="det-valor-condenacao" type="text" inputmode="decimal" placeholder="Ex: 15.000,00">
+              <p class="field-note" style="margin-top:4px;">Diferente do "valor da causa" (que vem do DataJud e é só o valor pedido pelo autor) — aqui é o valor que a Justiça efetivamente definiu. Ainda não entra no cálculo de provisão sugerida — é só analítico, pra mapear média por tribunal e motivo.</p>
             </div>
           </div>
           <div class="section-label"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3 4 6v6c0 5 4 8 8 9 4-1 8-4 8-9V6z"/><path d="m9 12 2 2 4-4"/></svg>Evidências enviadas ao banco</div>
@@ -1081,8 +1074,6 @@ let processosCache = [];
 let processoAtualId = null;
 let paginaProcessosAtual = 1;
 let opcoesCache = { BANCO:[], CONVENIO:[], OPERACAO:[], MOTIVO:[], SITUACAO_ATUAL:[] };
-let situacoesDesfavoraveisCache = new Set(); // populado por carregarOpcoesDominio(), a partir de opcoes_dominio.resultado_sentenca_konsi='DESFAVORAVEL'
-let situacoesFavoraveisCache = new Set(); // idem, resultado_sentenca_konsi='FAVORAVEL'
 let cohortCache = [];
 let bancoCache = [];
 let metricasCache = [];
@@ -1273,21 +1264,10 @@ async function carregarTudo(){
 }
 
 async function carregarOpcoesDominio(){
-  const { data, error } = await sb.from('opcoes_dominio').select('categoria,valor,resultado_sentenca_konsi').order('valor');
+  const { data, error } = await sb.from('opcoes_dominio').select('categoria,valor').order('valor');
   if(error){ toast('Erro ao carregar listas: '+error.message); return; }
   opcoesCache = { BANCO:[], CONVENIO:[], OPERACAO:[], MOTIVO:[], SITUACAO_ATUAL:[] };
-  // Quais situações representam sentença/acórdão favorável ou desfavorável à
-  // Konsi agora vem do banco (opcoes_dominio.resultado_sentenca_konsi), não
-  // de uma lista hardcoded aqui — cadastrar/reclassificar uma situação vira
-  // dado, não mudança de código. Alimenta tanto o destaque do campo de
-  // condenação quanto o "% de êxito" do dashboard.
-  situacoesDesfavoraveisCache = new Set();
-  situacoesFavoraveisCache = new Set();
-  (data||[]).forEach(o=>{
-    if(opcoesCache[o.categoria]) opcoesCache[o.categoria].push(o.valor);
-    if(o.categoria==='SITUACAO_ATUAL' && o.resultado_sentenca_konsi==='DESFAVORAVEL') situacoesDesfavoraveisCache.add(o.valor);
-    if(o.categoria==='SITUACAO_ATUAL' && o.resultado_sentenca_konsi==='FAVORAVEL') situacoesFavoraveisCache.add(o.valor);
-  });
+  (data||[]).forEach(o=>{ if(opcoesCache[o.categoria]) opcoesCache[o.categoria].push(o.valor); });
 }
 
 function preencherSelectDominio(selectId, categoria, valorAtual){
@@ -1334,7 +1314,7 @@ function montarFiltros(){
   const selTribunal = document.getElementById('f-tribunal');
   selTribunal.innerHTML = '<option value="">Todos os tribunais</option>' + tribunais.map(t=>`<option>${t}</option>`).join('');
 
-  ['f-banco','f-tribunal','f-motivo','f-situacao','f-risco','f-busca','f-ajuizamento-de','f-ajuizamento-ate','f-status-processo','f-origem-cadastro','f-evidencias','f-cadastro-de','f-cadastro-ate'].forEach(id=>{
+  ['f-banco','f-tribunal','f-motivo','f-risco','f-busca','f-ajuizamento-de','f-ajuizamento-ate','f-status-processo','f-origem-cadastro','f-evidencias','f-cadastro-de','f-cadastro-ate'].forEach(id=>{
     document.getElementById(id).oninput = ()=>{ paginaProcessosAtual = 1; renderTabelaProcessos(); };
   });
   document.getElementById('pag-processos-tamanho').onchange = ()=>{ paginaProcessosAtual = 1; renderTabelaProcessos(); };
@@ -1344,7 +1324,6 @@ function limparTodosFiltros(){
   document.getElementById('f-banco').value = '';
   document.getElementById('f-tribunal').value = '';
   document.getElementById('f-motivo').value = '';
-  document.getElementById('f-situacao').value = '';
   document.getElementById('f-risco').value = '';
   document.getElementById('f-status-processo').value = 'ATIVO';
   document.getElementById('f-origem-cadastro').value = '';
@@ -1362,7 +1341,6 @@ function renderTabelaProcessos(){
   const banco = document.getElementById('f-banco').value;
   const tribunal = document.getElementById('f-tribunal').value;
   const motivo = document.getElementById('f-motivo').value;
-  const situacao = document.getElementById('f-situacao').value;
   const risco = document.getElementById('f-risco').value;
   const busca = document.getElementById('f-busca').value.toLowerCase();
   const ajuizDe = document.getElementById('f-ajuizamento-de').value;
@@ -1377,7 +1355,6 @@ function renderTabelaProcessos(){
     (!banco || p.banco===banco) &&
     (!tribunal || p.tribunal===tribunal) &&
     (!motivo || p.motivo===motivo) &&
-    (!situacao || p.situacao_atual===situacao) &&
     (!risco || p.classificacao_risco===risco) &&
     (!statusProc || (p.status_processo||'ATIVO')===statusProc) &&
     (!origemCadastro || (p.origem_cadastro||'MANUAL')===origemCadastro) &&
@@ -1715,33 +1692,19 @@ async function carregarDashboard(){
     ? Math.round((comEvidenciaUtilizada + comEvidenciaNaoUtilizada) / totalComMarcacaoDefinida * 100)
     : null;
 
-  // % de êxito — refeito para basear-se na SITUAÇÃO do processo (mesma fonte
-  // usada pra destacar condenação), não mais no campo `resultado` (que era
-  // preenchido manualmente e sem regra fixa). Conta TODOS os processos,
-  // inclusive arquivados, que já têm sentença/acórdão definido (favorável ou
-  // desfavorável). Fica de fora:
-  //   - Superendividamento: risco já nasce zero, não é disputa de mérito.
-  //   - RECURSO PROVIDO/IMPROVIDO/PARCIALMENTE PROVIDO: ambíguo sem saber
-  //     quem recorreu — não entram no cálculo (só ACÓRDÃO FAVORÁVEL/
-  //     DESFAVORÁVEL contam pra fase de acórdão, sem essa ambiguidade).
-  const baseExito = processosCache.filter(p => p.motivo !== 'SUPERENDIVIDAMENTO');
-  const favoraveis = baseExito.filter(p => situacoesFavoraveisCache.has(p.situacao_atual)).length;
-  const desfavoraveis = baseExito.filter(p => situacoesDesfavoraveisCache.has(p.situacao_atual)).length;
-  const comResultadoDefinido = favoraveis + desfavoraveis;
-  const exitoPct = comResultadoDefinido ? Math.round(favoraveis/comResultadoDefinido*100) : null;
-  const tituloExito = `% de êxito = processos com sentença ou acórdão FAVORÁVEL à Konsi ÷ total de processos com sentença ou acórdão já definido (favorável + desfavorável), inclusive arquivados.\n\n` +
-    `Hoje: ${favoraveis} favorável(is) e ${desfavoraveis} desfavorável(is), de ${comResultadoDefinido} com resultado definido.\n\n` +
-    `Não entram nesta conta:\n` +
-    `• Processos de Superendividamento (o valor em risco já nasce zero — não é uma disputa de mérito).\n` +
-    `• Processos ainda sem sentença/acórdão (em andamento).\n` +
-    `• Recurso Provido/Improvido/Parcialmente Provido — o texto sozinho não diz se foi bom ou ruim pra Konsi sem saber quem recorreu; use "Acórdão Favorável"/"Acórdão Desfavorável" pra esses casos entrarem na conta.`;
+  // % de êxito considera todos os processos concluídos, mesmo os já arquivados
+  const ganhos = processosCache.filter(p=>p.resultado==='GANHO').length;
+  const perdidos = processosCache.filter(p=>p.resultado==='PERDIDO').length;
+  const parciais = processosCache.filter(p=>p.resultado==='PARCIAL').length;
+  const concluidos = ganhos + perdidos + parciais;
+  const exitoPct = concluidos ? Math.round(ganhos/concluidos*100) : null;
 
   document.getElementById('kpi-cards').innerHTML = `
     <div class="kpi-card" title="Conta apenas processos com status Ativo"><div><div class="label">Processos ativos</div><div class="value">${total}</div></div><div class="icon-box">${ICON_FOLDER}</div></div>
     <div class="kpi-card" title="Soma o valor em risco apenas dos processos com status Ativo"><div><div class="label">Valor em risco</div><div class="value">${fmtMoney(valorTotal)}</div></div><div class="icon-box">${ICON_COIN}</div></div>
     <div class="kpi-card ${criticos>0?'alert':''}" title="Processos ativos com risco Alto ou Crítico"><div><div class="label">Risco alto/crítico</div><div class="value">${criticos}</div></div><div class="icon-box">${ICON_ALERT}</div></div>
     <div class="kpi-card" title="${totalComMarcacaoDefinida} processo(s) ativo(s) com marcação definida (com ou sem evidência) de ${total} no total. Processos 'Aguardando contestação' não entram nessa conta."><div><div class="label">Processos com evidências</div><div class="value">${pctComEvidencia===null?'—':pctComEvidencia+'%'}</div></div><div class="icon-box">${ICON_SHIELD}</div></div>
-    <div class="kpi-card" title="${tituloExito}"><div><div class="label">% de êxito</div><div class="value">${exitoPct===null?'—':exitoPct+'%'}</div></div><div class="icon-box">${ICON_CLOCK}</div></div>
+    <div class="kpi-card" title="${concluidos} processos concluídos (ganho, perdido ou parcial), inclusive arquivados"><div><div class="label">% de êxito</div><div class="value">${exitoPct===null?'—':exitoPct+'%'}</div></div><div class="icon-box">${ICON_CLOCK}</div></div>
   `;
 
   const porBanco = {};
@@ -1774,7 +1737,6 @@ async function carregarDashboard(){
 
   // popula selects de filtro de motivo/risco
   document.getElementById('f-motivo').innerHTML = '<option value="">Todos os motivos</option>' + [...new Set(processosCache.map(p=>p.motivo).filter(Boolean))].sort().map(m=>`<option value="${m}">${m}</option>`).join('');
-  document.getElementById('f-situacao').innerHTML = '<option value="">Todas as situações</option>' + [...new Set(processosCache.map(p=>p.situacao_atual).filter(Boolean))].sort().map(s=>`<option value="${s}">${s}</option>`).join('');
   document.getElementById('f-risco').innerHTML = '<option value="">Todos os riscos</option>' + ['BAIXO','MEDIO','ALTO','CRITICO'].map(r=>`<option value="${r}">${r}</option>`).join('');
 
   const { data: cohort, error: cohortErr } = await sb.from('vw_cohort_ajuizamento').select('*');
@@ -2335,30 +2297,20 @@ function renderPainelCondenacoes(){
   const comCondenacao = processosCache.filter(p => p.valor_condenacao != null);
 
   if(!comCondenacao.length){
-    el.innerHTML = emptyState('Nenhuma condenação registrada ainda', 'Preencha os valores de condenação (material/moral) na edição de um processo com sentença/acórdão desfavorável para começar a alimentar este painel.');
+    el.innerHTML = emptyState('Nenhuma condenação registrada ainda', 'Preencha "Valor da condenação" na edição de um processo com sentença/acórdão desfavorável para começar a alimentar este painel.');
     return;
   }
 
-  // Segmenta material e moral separadamente: moral tende a variar por
-  // juiz/comarca sem relação direta com o valor pleiteado, enquanto material
-  // tende a se aproximar do valor em risco — misturar os dois dilui o sinal
-  // que a média deveria capturar por motivo/tribunal.
   const agruparCondenacao = (campo) => {
     const g = {};
     comCondenacao.forEach(p=>{
       const k = p[campo] || '(sem informação)';
-      g[k] = g[k] || { n:0, totalMaterial:0, totalMoral:0, total:0 };
+      g[k] = g[k] || { n:0, total:0 };
       g[k].n++;
-      g[k].totalMaterial += Number(p.valor_condenacao_material)||0;
-      g[k].totalMoral += Number(p.valor_condenacao_moral)||0;
       g[k].total += Number(p.valor_condenacao)||0;
     });
     return Object.entries(g)
-      .map(([label,d])=>({
-        label, n:d.n,
-        mediaMaterial:d.totalMaterial/d.n, mediaMoral:d.totalMoral/d.n,
-        media:d.total/d.n, total:d.total
-      }))
+      .map(([label,d])=>({ label, n:d.n, total:d.total, media:d.total/d.n }))
       .sort((a,b)=>b.media-a.media);
   };
 
@@ -2371,8 +2323,6 @@ function renderPainelCondenacoes(){
     <tr>
       <td>${item.label}</td>
       <td>${item.n}</td>
-      <td>${fmtMoney(item.mediaMaterial)}</td>
-      <td>${fmtMoney(item.mediaMoral)}</td>
       <td>${fmtMoney(item.media)}</td>
       <td>${fmtMoney(item.total)}</td>
     </tr>`;
@@ -2387,14 +2337,14 @@ function renderPainelCondenacoes(){
       <div>
         <h4 style="font-size:12.5px; margin:0 0 8px; color:var(--textPrimary);">Por tribunal</h4>
         <div class="table-wrap"><table class="table-compact">
-          <thead><tr><th>Tribunal</th><th>Qtd.</th><th>Média material</th><th>Média moral</th><th>Média total</th><th>Total</th></tr></thead>
+          <thead><tr><th>Tribunal</th><th>Qtd.</th><th>Média</th><th>Total</th></tr></thead>
           <tbody>${porTribunal.map(linhaTabela).join('')}</tbody>
         </table></div>
       </div>
       <div>
         <h4 style="font-size:12.5px; margin:0 0 8px; color:var(--textPrimary);">Por motivo</h4>
         <div class="table-wrap"><table class="table-compact">
-          <thead><tr><th>Motivo</th><th>Qtd.</th><th>Média material</th><th>Média moral</th><th>Média total</th><th>Total</th></tr></thead>
+          <thead><tr><th>Motivo</th><th>Qtd.</th><th>Média</th><th>Total</th></tr></thead>
           <tbody>${porMotivoCond.map(linhaTabela).join('')}</tbody>
         </table></div>
       </div>
@@ -2719,30 +2669,24 @@ function preencherCampoEvidencias(prefixo, valor){
 
 // Superendividamento: são casos em que a Konsi não questiona a "boa venda" —
 // o cliente só está endividado e quer renegociar. Não faz sentido computar
-// valor em risco nesses casos, então ele é zerado — e a partir da migração 34
-// isso é garantido por trigger no banco (trg_zerar_risco_superendividamento),
-// não só aqui no front-end.
+// valor em risco nesses casos, então ele é zerado e travado automaticamente.
+const SITUACOES_DESFAVORAVEIS = ['SENTENÇA PROCEDENTE', 'SENTENÇA PARCIALMENTE PROCEDENTE', 'RECURSO DESFAVORÁVEL (À KONSI)'];
 function aplicarDestaqueCondenacao(){
   const situacao = document.getElementById('det-situacao').value;
   const wrap = document.getElementById('det-condenacao-wrap');
-  const campoMaterial = document.getElementById('det-valor-condenacao-material');
-  const campoMoral = document.getElementById('det-valor-condenacao-moral');
-  // "Situação desfavorável" vem de opcoes_dominio.desfavoravel_ao_konsi (ver
-  // carregarOpcoesDominio) — não é mais uma lista de texto fixa no código.
-  if(situacoesDesfavoraveisCache.has(situacao)){
+  const campo = document.getElementById('det-valor-condenacao');
+  if(SITUACOES_DESFAVORAVEIS.includes(situacao)){
     wrap.style.background = 'var(--alertaBg)';
     wrap.style.border = '1px solid var(--alerta)';
     wrap.style.borderRadius = '8px';
     wrap.style.padding = '10px 12px';
-    campoMaterial.placeholder = 'Situação desfavorável — informe o valor, se já definido';
-    campoMoral.placeholder = 'Situação desfavorável — informe o valor, se já definido';
+    campo.placeholder = 'Situação desfavorável — informe o valor da condenação, se já definido';
   } else {
     wrap.style.background = '';
     wrap.style.border = '';
     wrap.style.borderRadius = '';
     wrap.style.padding = '';
-    campoMaterial.placeholder = 'Ex: 15.000,00';
-    campoMoral.placeholder = 'Ex: 5.000,00';
+    campo.placeholder = 'Ex: 15.000,00';
   }
 }
 
@@ -3210,9 +3154,7 @@ function renderDetView(p){
       ${fc('Justiça gratuita', p.justica_gratuita==null ? '—' : (p.justica_gratuita ? 'Sim' : 'Não'))}
       ${fc('Liminar', p.liminar==null ? '—' : (p.liminar ? 'Sim' : 'Não'))}
       ${fc('Valor em risco', fmtMoney(p.valor_risco))}
-      ${p.valor_condenacao_material!=null ? fc('Condenação — dano material', fmtMoney(p.valor_condenacao_material)) : ''}
-      ${p.valor_condenacao_moral!=null ? fc('Condenação — dano moral', fmtMoney(p.valor_condenacao_moral)) : ''}
-      ${p.valor_condenacao!=null ? fc('Condenação — total', fmtMoney(p.valor_condenacao)) : ''}
+      ${p.valor_condenacao!=null ? fc('Valor da condenação', fmtMoney(p.valor_condenacao)) : ''}
       ${fc('Evidências enviadas ao banco', `<span class="badge badge-${p.situacao_evidencias||'AGUARDANDO_CONTESTACAO'}">${LABEL_EVIDENCIAS[p.situacao_evidencias]||LABEL_EVIDENCIAS.AGUARDANDO_CONTESTACAO}</span>`)}
       ${fc('Origem do cadastro', p.origem_cadastro==='IMPORTACAO_CSV' ? '<span class="badge-csv">Importação CSV</span>' : 'Manual')}
       ${fc('Cadastrado em', fmtDate((p.criado_em||'').slice(0,10)))}
@@ -3242,6 +3184,18 @@ async function abrirDetalhe(id){
   document.getElementById('det-edit-form').style.display = 'none';
   document.getElementById('det-btn-excluir').style.display = currentUserIsAdmin ? 'inline-block' : 'none';
   document.getElementById('det-nova-tarefa-wrap').style.display = currentUserIsAdmin ? 'block' : 'none';
+
+  // Não-admin só edita se tiver uma tarefa aberta designada a ele pra ESTE
+  // processo (mesma regra aplicada no banco via RLS — aqui é só pra não
+  // mostrar um botão que ia dar erro de permissão ao clicar).
+  if(currentUserIsAdmin){
+    document.getElementById('det-btn-editar').style.display = 'inline-block';
+  } else {
+    const { data: tarefaMinha } = await sb.from('tarefas_acompanhamento')
+      .select('id').eq('processo_id', id).eq('responsavel_id', currentUser.id)
+      .in('status', ['PENDENTE','ATRASADA']).limit(1);
+    document.getElementById('det-btn-editar').style.display = tarefaMinha?.length ? 'inline-block' : 'none';
+  }
 
   document.getElementById('mov-data').value = new Date().toISOString().slice(0,10);
   document.getElementById('tarefa-prazo').value = '';
@@ -3310,8 +3264,7 @@ function abrirEdicaoProcesso(){
   document.getElementById('det-valor-risco').value = fmtNumeroBR(p.valor_risco);
   aplicarRegraSuperendividamento('det');
   preencherSelectDominio('det-situacao','SITUACAO_ATUAL', p.situacao_atual);
-  document.getElementById('det-valor-condenacao-material').value = fmtNumeroBR(p.valor_condenacao_material);
-  document.getElementById('det-valor-condenacao-moral').value = fmtNumeroBR(p.valor_condenacao_moral);
+  document.getElementById('det-valor-condenacao').value = fmtNumeroBR(p.valor_condenacao);
   aplicarDestaqueCondenacao();
   preencherCampoEvidencias('det', p.situacao_evidencias || 'AGUARDANDO_CONTESTACAO');
   document.getElementById('det-resumo-simples').value = p.resumo_simples || '';
@@ -3346,8 +3299,7 @@ async function salvarAtualizacaoProcesso(){
     situacao_evidencias: calcularSituacaoEvidencias('det'),
     resumo_simples: document.getElementById('det-resumo-simples').value.trim() || null,
     resultado: document.getElementById('det-resultado').value,
-    valor_condenacao_material: parseNumeroBR(document.getElementById('det-valor-condenacao-material').value),
-    valor_condenacao_moral: parseNumeroBR(document.getElementById('det-valor-condenacao-moral').value),
+    valor_condenacao: parseNumeroBR(document.getElementById('det-valor-condenacao').value),
     status_processo: document.getElementById('det-status-processo').value
   };
   if(window.__criterioRiscoPendente){
@@ -3355,7 +3307,7 @@ async function salvarAtualizacaoProcesso(){
     payload.criterio_risco_atualizado_em = new Date().toISOString();
   }
   const { error } = await sb.from('processos_judiciais').update(payload).eq('id', processoAtualId);
-  if(error){ toast('Erro: '+error.message+' (só administradores podem editar um processo)'); return; }
+  if(error){ toast('Erro: '+error.message+' (verifique se você é administrador ou tem uma tarefa aberta designada a você para este processo)'); return; }
   window.__criterioRiscoPendente = null;
   toast('Dados do processo atualizados.');
   await carregarProcessos(); await carregarDashboard();
