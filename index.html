@@ -930,7 +930,7 @@
           </div>
           <div class="form-row">
             <div><label>Tipo de operação</label><select id="det-operacao" onchange="tratarNovoValorDominio('det-operacao','OPERACAO')"></select></div>
-            <div><label>Motivo da ação</label><select id="det-motivo" onchange="tratarNovoValorDominio('det-motivo','MOTIVO'); aplicarRegraSuperendividamento('det')"></select></div>
+            <div><label>Motivo da ação</label><select id="det-motivo" onchange="tratarNovoValorDominio('det-motivo','MOTIVO'); aplicarRegraSuperendividamento('det'); aplicarDestaqueCondenacao()"></select></div>
           </div>
           <div class="form-row">
             <div><label>Valor da operação (R$)</label><input id="det-valor-operacao" type="text" inputmode="decimal" placeholder="Ex: 5.000,00"></div>
@@ -951,6 +951,7 @@
             <div><label>Valor em risco (R$)</label><input id="det-valor-risco" type="text" inputmode="decimal" placeholder="Ex: 5.000,00"></div>
           </div>
           <div class="form-row single"><div><label>Situação atual</label><select id="det-situacao" onchange="tratarNovoValorDominio('det-situacao','SITUACAO_ATUAL'); aplicarDestaqueCondenacao()"></select></div></div>
+
           <div class="form-row single" id="det-condenacao-wrap">
             <div>
               <label>Valor da condenação (R$) <span style="font-weight:400; color:var(--textMuted);">— só se já houver sentença/acórdão desfavorável</span></label>
@@ -958,6 +959,19 @@
               <p class="field-note" style="margin-top:4px;">Diferente do "valor da causa" (que vem do DataJud e é só o valor pedido pelo autor) — aqui é o valor que a Justiça efetivamente definiu. Ainda não entra no cálculo de provisão sugerida — é só analítico, pra mapear média por tribunal e motivo.</p>
             </div>
           </div>
+
+          <div class="form-row" id="det-dano-wrap" style="display:none;">
+            <div>
+              <label>Dano moral (R$)</label>
+              <input id="det-valor-dano-moral" type="text" inputmode="decimal" placeholder="Ex: 5.000,00" oninput="atualizarSomaDanos()">
+            </div>
+            <div>
+              <label>Dano material (R$)</label>
+              <input id="det-valor-dano-material" type="text" inputmode="decimal" placeholder="Ex: 10.000,00" oninput="atualizarSomaDanos()">
+            </div>
+          </div>
+          <p class="field-note" id="det-dano-soma-nota" style="display:none; margin:-6px 0 12px;"></p>
+
           <div class="section-label"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3 4 6v6c0 5 4 8 8 9 4-1 8-4 8-9V6z"/><path d="m9 12 2 2 4-4"/></svg>Evidências enviadas ao banco</div>
           <div class="form-row">
             <div><label>Enviamos evidência de "boa venda"?</label>
@@ -2670,24 +2684,47 @@ function preencherCampoEvidencias(prefixo, valor){
 // Superendividamento: são casos em que a Konsi não questiona a "boa venda" —
 // o cliente só está endividado e quer renegociar. Não faz sentido computar
 // valor em risco nesses casos, então ele é zerado e travado automaticamente.
+// Superendividamento e Revisional ficam de fora da separação — não costumam
+// envolver pedido de dano moral/material da mesma forma que os demais
+// motivos, então continuam com um valor único de condenação.
 const SITUACOES_DESFAVORAVEIS = ['SENTENÇA PROCEDENTE', 'SENTENÇA PARCIALMENTE PROCEDENTE', 'RECURSO DESFAVORÁVEL (À KONSI)'];
+const MOTIVOS_SEM_SEPARACAO_DANO = ['SUPERENDIVIDAMENTO', 'REVISIONAL'];
+
 function aplicarDestaqueCondenacao(){
   const situacao = document.getElementById('det-situacao').value;
-  const wrap = document.getElementById('det-condenacao-wrap');
-  const campo = document.getElementById('det-valor-condenacao');
-  if(SITUACOES_DESFAVORAVEIS.includes(situacao)){
-    wrap.style.background = 'var(--alertaBg)';
-    wrap.style.border = '1px solid var(--alerta)';
-    wrap.style.borderRadius = '8px';
-    wrap.style.padding = '10px 12px';
-    campo.placeholder = 'Situação desfavorável — informe o valor da condenação, se já definido';
+  const motivo = document.getElementById('det-motivo').value;
+  const desfavoravel = SITUACOES_DESFAVORAVEIS.includes(situacao);
+  const separaDano = desfavoravel && !MOTIVOS_SEM_SEPARACAO_DANO.includes(motivo);
+
+  const wrapUnico = document.getElementById('det-condenacao-wrap');
+  const campoUnico = document.getElementById('det-valor-condenacao');
+  const wrapDano = document.getElementById('det-dano-wrap');
+  const notaSoma = document.getElementById('det-dano-soma-nota');
+
+  wrapUnico.style.display = separaDano ? 'none' : 'block';
+  wrapDano.style.display = separaDano ? 'flex' : 'none';
+  notaSoma.style.display = separaDano ? 'block' : 'none';
+
+  if(desfavoravel && !separaDano){
+    wrapUnico.style.background = 'var(--alertaBg)';
+    wrapUnico.style.border = '1px solid var(--alerta)';
+    wrapUnico.style.borderRadius = '8px';
+    wrapUnico.style.padding = '10px 12px';
+    campoUnico.placeholder = 'Situação desfavorável — informe o valor da condenação, se já definido';
   } else {
-    wrap.style.background = '';
-    wrap.style.border = '';
-    wrap.style.borderRadius = '';
-    wrap.style.padding = '';
-    campo.placeholder = 'Ex: 15.000,00';
+    wrapUnico.style.background = '';
+    wrapUnico.style.border = '';
+    wrapUnico.style.borderRadius = '';
+    wrapUnico.style.padding = '';
+    campoUnico.placeholder = 'Ex: 15.000,00';
   }
+  if(separaDano) atualizarSomaDanos();
+}
+
+function atualizarSomaDanos(){
+  const moral = parseNumeroBR(document.getElementById('det-valor-dano-moral').value) || 0;
+  const material = parseNumeroBR(document.getElementById('det-valor-dano-material').value) || 0;
+  document.getElementById('det-dano-soma-nota').textContent = `Total (dano moral + material): ${fmtMoney(moral + material)} — esse total é o que fica salvo como "valor da condenação".`;
 }
 
 function aplicarRegraSuperendividamento(prefixo){
@@ -3154,7 +3191,7 @@ function renderDetView(p){
       ${fc('Justiça gratuita', p.justica_gratuita==null ? '—' : (p.justica_gratuita ? 'Sim' : 'Não'))}
       ${fc('Liminar', p.liminar==null ? '—' : (p.liminar ? 'Sim' : 'Não'))}
       ${fc('Valor em risco', fmtMoney(p.valor_risco))}
-      ${p.valor_condenacao!=null ? fc('Valor da condenação', fmtMoney(p.valor_condenacao)) : ''}
+      ${p.valor_condenacao!=null ? fc('Valor da condenação', fmtMoney(p.valor_condenacao) + (p.valor_dano_moral!=null || p.valor_dano_material!=null ? ` <span style="color:var(--textMuted); font-weight:400;">(moral: ${fmtMoney(p.valor_dano_moral)} · material: ${fmtMoney(p.valor_dano_material)})</span>` : '')) : ''}
       ${fc('Evidências enviadas ao banco', `<span class="badge badge-${p.situacao_evidencias||'AGUARDANDO_CONTESTACAO'}">${LABEL_EVIDENCIAS[p.situacao_evidencias]||LABEL_EVIDENCIAS.AGUARDANDO_CONTESTACAO}</span>`)}
       ${fc('Origem do cadastro', p.origem_cadastro==='IMPORTACAO_CSV' ? '<span class="badge-csv">Importação CSV</span>' : 'Manual')}
       ${fc('Cadastrado em', fmtDate((p.criado_em||'').slice(0,10)))}
@@ -3265,6 +3302,8 @@ function abrirEdicaoProcesso(){
   aplicarRegraSuperendividamento('det');
   preencherSelectDominio('det-situacao','SITUACAO_ATUAL', p.situacao_atual);
   document.getElementById('det-valor-condenacao').value = fmtNumeroBR(p.valor_condenacao);
+  document.getElementById('det-valor-dano-moral').value = fmtNumeroBR(p.valor_dano_moral);
+  document.getElementById('det-valor-dano-material').value = fmtNumeroBR(p.valor_dano_material);
   aplicarDestaqueCondenacao();
   preencherCampoEvidencias('det', p.situacao_evidencias || 'AGUARDANDO_CONTESTACAO');
   document.getElementById('det-resumo-simples').value = p.resumo_simples || '';
@@ -3282,6 +3321,16 @@ function cancelarEdicaoProcesso(){
 }
 
 async function salvarAtualizacaoProcesso(){
+  const motivoAtual = document.getElementById('det-motivo').value;
+  const separaDanoAtual = !MOTIVOS_SEM_SEPARACAO_DANO.includes(motivoAtual);
+  const danoMoral = separaDanoAtual ? parseNumeroBR(document.getElementById('det-valor-dano-moral').value) : null;
+  const danoMaterial = separaDanoAtual ? parseNumeroBR(document.getElementById('det-valor-dano-material').value) : null;
+  // Nos motivos com separação, o valor da condenação é sempre a soma dos
+  // dois — evita o campo único ficar desatualizado ou divergente da soma.
+  const valorCondenacaoFinal = separaDanoAtual
+    ? ((danoMoral||0) + (danoMaterial||0)) || null
+    : parseNumeroBR(document.getElementById('det-valor-condenacao').value);
+
   const payload = {
     nome_cliente: document.getElementById('det-nome').value.trim(),
     ade: document.getElementById('det-ade').value.trim(),
@@ -3299,7 +3348,9 @@ async function salvarAtualizacaoProcesso(){
     situacao_evidencias: calcularSituacaoEvidencias('det'),
     resumo_simples: document.getElementById('det-resumo-simples').value.trim() || null,
     resultado: document.getElementById('det-resultado').value,
-    valor_condenacao: parseNumeroBR(document.getElementById('det-valor-condenacao').value),
+    valor_condenacao: valorCondenacaoFinal,
+    valor_dano_moral: danoMoral,
+    valor_dano_material: danoMaterial,
     status_processo: document.getElementById('det-status-processo').value
   };
   if(window.__criterioRiscoPendente){
