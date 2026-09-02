@@ -722,7 +722,14 @@
       <div><label>Nome completo do cliente</label><input id="np-nome"></div>
     </div>
     <div class="form-row">
-      <div><label>ADE do contrato</label><input id="np-ade"></div>
+      <div>
+        <label>ADE(s) do contrato <span style="font-weight:400; color:var(--textMuted);">— mais de um se o processo contestar vários contratos (ex: Superendividamento)</span></label>
+        <div style="display:flex; gap:8px;">
+          <input id="np-ade-novo" placeholder="Digite um ADE e clique em Adicionar" onkeydown="if(event.key==='Enter'){event.preventDefault(); adicionarAdeNovoProcesso();}">
+          <button type="button" class="btn-secondary" style="width:auto; white-space:nowrap;" onclick="adicionarAdeNovoProcesso()">Adicionar</button>
+        </div>
+        <div id="np-ade-lista" style="display:flex; gap:6px; flex-wrap:wrap; margin-top:8px;"></div>
+      </div>
       <div><label>Banco</label>
         <select id="np-banco" onchange="tratarNovoValorDominio('np-banco','BANCO')"></select>
       </div>
@@ -735,10 +742,17 @@
         <select id="np-operacao" onchange="tratarNovoValorDominio('np-operacao','OPERACAO')"></select>
       </div>
     </div>
-    <div class="form-row">
-      <div><label>Motivo da ação</label>
-        <select id="np-motivo" onchange="tratarNovoValorDominio('np-motivo','MOTIVO'); aplicarRegraSuperendividamento('np')"></select>
+    <div class="form-row single">
+      <div>
+        <label>Motivo(s) da ação <span style="font-weight:400; color:var(--textMuted);">— mais de um se a ação questionar mais de um motivo (ex: Revisional + Venda casada)</span></label>
+        <div style="display:flex; gap:8px;">
+          <select id="np-motivo-select" onchange="tratarNovoValorDominio('np-motivo-select','MOTIVO')" style="flex:1;"></select>
+          <button type="button" class="btn-secondary" style="width:auto; white-space:nowrap;" onclick="adicionarMotivoNovoProcesso()">Adicionar</button>
+        </div>
+        <div id="np-motivo-lista" style="display:flex; gap:6px; flex-wrap:wrap; margin-top:8px;"></div>
       </div>
+    </div>
+    <div class="form-row single">
       <div><label>Valor da operação (R$)</label><input id="np-valor-operacao" type="text" inputmode="decimal" placeholder="Ex: 5.000,00"></div>
     </div>
     <div class="form-row">
@@ -786,7 +800,7 @@
   <div class="modal wide">
     <div class="modal-head"><h3>Importar processos via CSV</h3><button onclick="fecharImportarCsv()">✕</button></div>
     <p class="field-note">
-      Colunas reconhecidas — obrigatórias: número do processo, nome do cliente, banco. Opcionais: tribunal, ADE, convênio, tipo de operação, motivo, valor da operação, data da operação, data de ajuizamento, valor em risco, situação atual, evidências (Com/Sem evidências). O nome exato da coluna pode variar (com ou sem acento, maiúscula/minúscula, "numero_processo" ou "número do processo") — o sistema tenta reconhecer as variações mais comuns. Se uma coluna não for reconhecida, baixe o modelo abaixo e compare os nomes. Datas em AAAA-MM-DD ou DD/MM/AAAA. Todo processo importado entra com risco "Baixo" — a classificação de risco não é importável, só é feita pelo questionário guiado dentro do sistema.
+      Colunas reconhecidas — obrigatórias: número do processo, nome do cliente, banco. Opcionais: tribunal, ADE (se o processo contestar mais de um contrato, separe os ADEs por vírgula na mesma célula, ex: "111, 222"), convênio, tipo de operação, motivo (também aceita mais de um separado por vírgula, ex: "REVISIONAL, VENDA CASADA"), valor da operação, data da operação, data de ajuizamento, valor em risco, situação atual, evidências (Com/Sem evidências). O nome exato da coluna pode variar (com ou sem acento, maiúscula/minúscula, "numero_processo" ou "número do processo") — o sistema tenta reconhecer as variações mais comuns. Se uma coluna não for reconhecida, baixe o modelo abaixo e compare os nomes. Datas em AAAA-MM-DD ou DD/MM/AAAA. Todo processo importado entra com risco "Baixo" — a classificação de risco não é importável, só é feita pelo questionário guiado dentro do sistema.
       Isso não substitui o cadastro manual um a um — o botão "+" continua funcionando normalmente pra cadastrar ou completar processos individualmente.
     </p>
     <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:16px;">
@@ -920,17 +934,35 @@
           <div class="form-row single">
             <div><label>Nome completo do cliente</label><input id="det-nome"></div>
           </div>
-          <div class="form-row">
-            <div><label>ADE do contrato</label><input id="det-ade"></div>
+          <div class="form-row single">
+            <div>
+              <label>ADE(s) do contrato <span style="font-weight:400; color:var(--textMuted);">— mais de um se o processo contestar vários contratos</span></label>
+              <div style="display:flex; gap:8px;">
+                <input id="det-ade-novo" placeholder="Digite um ADE e clique em Adicionar" onkeydown="if(event.key==='Enter'){event.preventDefault(); adicionarAdeProcessoExistente();}">
+                <button type="button" class="btn-secondary" style="width:auto; white-space:nowrap;" onclick="adicionarAdeProcessoExistente()">Adicionar</button>
+              </div>
+              <div id="det-ade-lista" style="display:flex; gap:6px; flex-wrap:wrap; margin-top:8px;"></div>
+            </div>
+          </div>
+          <div class="form-row single">
             <div><label>Tribunal</label><input id="det-tribunal" placeholder="TJBA, TJSP, TRF1..."></div>
           </div>
           <div class="form-row">
             <div><label>Banco</label><select id="det-banco" onchange="tratarNovoValorDominio('det-banco','BANCO')"></select></div>
             <div><label>Convênio</label><select id="det-convenio" onchange="tratarNovoValorDominio('det-convenio','CONVENIO')"></select></div>
           </div>
-          <div class="form-row">
+          <div class="form-row single">
             <div><label>Tipo de operação</label><select id="det-operacao" onchange="tratarNovoValorDominio('det-operacao','OPERACAO')"></select></div>
-            <div><label>Motivo da ação</label><select id="det-motivo" onchange="tratarNovoValorDominio('det-motivo','MOTIVO'); aplicarRegraSuperendividamento('det'); aplicarDestaqueCondenacao()"></select></div>
+          </div>
+          <div class="form-row single">
+            <div>
+              <label>Motivo(s) da ação <span style="font-weight:400; color:var(--textMuted);">— mais de um se a ação questionar mais de um motivo</span></label>
+              <div style="display:flex; gap:8px;">
+                <select id="det-motivo-select" onchange="tratarNovoValorDominio('det-motivo-select','MOTIVO')" style="flex:1;"></select>
+                <button type="button" class="btn-secondary" style="width:auto; white-space:nowrap;" onclick="adicionarMotivoProcessoExistente()">Adicionar</button>
+              </div>
+              <div id="det-motivo-lista" style="display:flex; gap:6px; flex-wrap:wrap; margin-top:8px;"></div>
+            </div>
           </div>
           <div class="form-row">
             <div><label>Valor da operação (R$)</label><input id="det-valor-operacao" type="text" inputmode="decimal" placeholder="Ex: 5.000,00"></div>
@@ -1315,6 +1347,28 @@ async function carregarProcessos(){
   const { data, error } = await sb.from('processos_judiciais').select('*').order('criado_em', {ascending:false});
   if(error){ toast('Erro ao carregar processos: '+error.message); return; }
   processosCache = data || [];
+
+  // Carrega todos os ADEs e todos os motivos de uma vez (não um por
+  // processo, seria lento) e mescla no cache — usado na busca/filtro (pra
+  // achar por qualquer ADE/motivo, não só o principal) e nos relatórios
+  // "por motivo", que agora contam o processo em cada balde separado.
+  const { data: todosAdes } = await sb.from('processo_ades').select('processo_id, ade');
+  const adesPorProcesso = {};
+  (todosAdes||[]).forEach(a=>{
+    adesPorProcesso[a.processo_id] = adesPorProcesso[a.processo_id] || [];
+    adesPorProcesso[a.processo_id].push(a.ade);
+  });
+  const { data: todosMotivos } = await sb.from('processo_motivos').select('processo_id, motivo');
+  const motivosPorProcesso = {};
+  (todosMotivos||[]).forEach(m=>{
+    motivosPorProcesso[m.processo_id] = motivosPorProcesso[m.processo_id] || [];
+    motivosPorProcesso[m.processo_id].push(m.motivo);
+  });
+  processosCache.forEach(p=>{
+    p.todosAdes = adesPorProcesso[p.id] || (p.ade ? [p.ade] : []);
+    p.todosMotivos = motivosPorProcesso[p.id] || (p.motivo ? [p.motivo] : []);
+  });
+
   montarFiltros();
   renderTabelaProcessos();
 }
@@ -1368,12 +1422,12 @@ function renderTabelaProcessos(){
   const filtrado = processosCache.filter(p=>
     (!banco || p.banco===banco) &&
     (!tribunal || p.tribunal===tribunal) &&
-    (!motivo || p.motivo===motivo) &&
+    (!motivo || (p.todosMotivos||[]).includes(motivo)) &&
     (!risco || p.classificacao_risco===risco) &&
     (!statusProc || (p.status_processo||'ATIVO')===statusProc) &&
     (!origemCadastro || (p.origem_cadastro||'MANUAL')===origemCadastro) &&
     (!evidencias || (p.situacao_evidencias||'AGUARDANDO_CONTESTACAO')===evidencias) &&
-    (!busca || (p.nome_cliente||'').toLowerCase().includes(busca) || (p.numero_processo||'').includes(busca) || String(p.ade||'').includes(busca)) &&
+    (!busca || (p.nome_cliente||'').toLowerCase().includes(busca) || (p.numero_processo||'').includes(busca) || (p.todosAdes||[]).some(a=>String(a).includes(busca))) &&
     (!ajuizDe || (p.data_ajuizamento && p.data_ajuizamento >= ajuizDe)) &&
     (!ajuizAte || (p.data_ajuizamento && p.data_ajuizamento <= ajuizAte)) &&
     (!cadastroDe || (p.criado_em && p.criado_em.slice(0,10) >= cadastroDe)) &&
@@ -1548,12 +1602,16 @@ function renderPainel15Dias(containerId){
   }
 
   // ---- Alertas: motivo com mais de 9 ações no período, exceto Superendividamento
+  // Cada motivo do processo entra em seu próprio balde — um processo com 2
+  // motivos conta em cada um separadamente.
   const porMotivo = {};
   recentes.forEach(p=>{
-    const m = p.motivo || '(sem motivo)';
-    porMotivo[m] = porMotivo[m] || { n:0, v:0 };
-    porMotivo[m].n++;
-    porMotivo[m].v += Number(p.valor_operacao)||0;
+    const motivosDoProcesso = (p.todosMotivos && p.todosMotivos.length) ? p.todosMotivos : [p.motivo || '(sem motivo)'];
+    motivosDoProcesso.forEach(m=>{
+      porMotivo[m] = porMotivo[m] || { n:0, v:0 };
+      porMotivo[m].n++;
+      porMotivo[m].v += Number(p.valor_operacao)||0;
+    });
   });
   const alertas = Object.entries(porMotivo)
     .filter(([m,d]) => m!=='SUPERENDIVIDAMENTO' && d.n > LIMITE_ACOES_MESMO_MOTIVO)
@@ -1744,13 +1802,17 @@ async function carregarDashboard(){
     (item)=> abrirDrilldown('classificacao_risco', item.label, 'banco', 'Banco', ativos));
 
   const porMotivo = {};
-  processosCache.forEach(p=>{ porMotivo[p.motivo]=(porMotivo[p.motivo]||0)+1; });
+  processosCache.forEach(p=>{
+    (p.todosMotivos&&p.todosMotivos.length ? p.todosMotivos : [p.motivo]).forEach(m=>{
+      if(m) porMotivo[m]=(porMotivo[m]||0)+1;
+    });
+  });
   renderPieChart(document.getElementById('chart-por-motivo'),
     Object.entries(porMotivo).sort((a,b)=>b[1]-a[1]).map(([m,n])=>({label:m, n})), null, 'processos',
     (item)=> abrirDrilldown('motivo', item.label, 'banco', 'Banco', processosCache));
 
   // popula selects de filtro de motivo/risco
-  document.getElementById('f-motivo').innerHTML = '<option value="">Todos os motivos</option>' + [...new Set(processosCache.map(p=>p.motivo).filter(Boolean))].sort().map(m=>`<option value="${m}">${m}</option>`).join('');
+  document.getElementById('f-motivo').innerHTML = '<option value="">Todos os motivos</option>' + [...new Set(processosCache.flatMap(p=>p.todosMotivos||[]))].sort().map(m=>`<option value="${m}">${m}</option>`).join('');
   document.getElementById('f-risco').innerHTML = '<option value="">Todos os riscos</option>' + ['BAIXO','MEDIO','ALTO','CRITICO'].map(r=>`<option value="${r}">${r}</option>`).join('');
 
   const { data: cohort, error: cohortErr } = await sb.from('vw_cohort_ajuizamento').select('*');
@@ -1824,15 +1886,26 @@ async function carregarAtualizacoesRecentes(){
 }
 
 function calcularCohortPorCampo(lista, campo){
+  // "n" conta contratos (ADEs) — um processo com 2 ADEs entra com peso 2.
+  // A média de dias continua sendo por PROCESSO (um ADE não tem data de
+  // ajuizamento própria, todos compartilham a mesma linha do tempo).
+  // "motivo" é multivalorado: um processo com 2 motivos entra em cada balde.
   const grupos = {};
   lista.forEach(p=>{
-    const chave = p[campo] || '(sem informação)';
-    grupos[chave] = grupos[chave] || { soma:0, n:0 };
-    grupos[chave].soma += diasEntre(p.data_operacao, p.data_ajuizamento);
-    grupos[chave].n++;
+    const chaves = campo === 'motivo'
+      ? ((p.todosMotivos && p.todosMotivos.length) ? p.todosMotivos : [p.motivo || '(sem informação)'])
+      : [p[campo] || '(sem informação)'];
+    const qtdContratos = Math.max(1, (p.todosAdes||[]).length);
+    const dias = diasEntre(p.data_operacao, p.data_ajuizamento);
+    chaves.forEach(chave=>{
+      grupos[chave] = grupos[chave] || { soma:0, nProcessos:0, nContratos:0 };
+      grupos[chave].soma += dias;
+      grupos[chave].nProcessos++;
+      grupos[chave].nContratos += qtdContratos;
+    });
   });
   return Object.entries(grupos)
-    .map(([chave,v])=>({ label:chave, n:v.n, media: Math.round(v.soma/v.n) }))
+    .map(([chave,v])=>({ label:chave, n:v.nContratos, media: Math.round(v.soma/v.nProcessos) }))
     .sort((a,b)=>b.n-a.n);
 }
 
@@ -1924,13 +1997,23 @@ function toggleGraficoCompletoCohort(rowEl, mesOperacao){
 // "SUPERENDIVIDAMENTO"), mostra o detalhamento cruzando com outro campo
 // (ex: quantos processos e qual valor em risco, por banco).
 function abrirDrilldown(campoFiltro, valorFiltro, campoAgrupar, labelAgrupar, base){
-  const filtrados = (base||processosCache).filter(p => (p[campoFiltro] || '(sem informação)') === valorFiltro);
+  // "motivo" agora é multivalorado (um processo pode ter mais de um) — trata
+  // separado tanto pra filtrar quanto pra agrupar, os demais campos continuam
+  // com correspondência simples de valor único.
+  const matchCampo = (p, campo, valor) =>
+    campo === 'motivo' ? (p.todosMotivos||[]).includes(valor) : (p[campo] || '(sem informação)') === valor;
+
+  const filtrados = (base||processosCache).filter(p => matchCampo(p, campoFiltro, valorFiltro));
   const grupos = {};
   filtrados.forEach(p=>{
-    const chave = p[campoAgrupar] || '(sem informação)';
-    grupos[chave] = grupos[chave] || { n:0, v:0 };
-    grupos[chave].n++;
-    grupos[chave].v += Number(p.valor_risco)||0;
+    const chaves = campoAgrupar === 'motivo'
+      ? ((p.todosMotivos && p.todosMotivos.length) ? p.todosMotivos : [p.motivo || '(sem informação)'])
+      : [p[campoAgrupar] || '(sem informação)'];
+    chaves.forEach(chave=>{
+      grupos[chave] = grupos[chave] || { n:0, v:0 };
+      grupos[chave].n++;
+      grupos[chave].v += Number(p.valor_risco)||0;
+    });
   });
   const linhas = Object.entries(grupos).sort((a,b)=>b[1].n-a[1].n).map(([k,val])=>({label:k, n:val.n, v:val.v}));
   const total = filtrados.length;
@@ -2318,10 +2401,14 @@ function renderPainelCondenacoes(){
   const agruparCondenacao = (campo) => {
     const g = {};
     comCondenacao.forEach(p=>{
-      const k = p[campo] || '(sem informação)';
-      g[k] = g[k] || { n:0, total:0 };
-      g[k].n++;
-      g[k].total += Number(p.valor_condenacao)||0;
+      const chaves = campo === 'motivo'
+        ? ((p.todosMotivos && p.todosMotivos.length) ? p.todosMotivos : [p.motivo || '(sem informação)'])
+        : [p[campo] || '(sem informação)'];
+      chaves.forEach(k=>{
+        g[k] = g[k] || { n:0, total:0 };
+        g[k].n++;
+        g[k].total += Number(p.valor_condenacao)||0;
+      });
     });
     return Object.entries(g)
       .map(([label,d])=>({ label, n:d.n, total:d.total, media:d.total/d.n }))
@@ -2505,9 +2592,14 @@ function fmtMesAno(dataStr){
 }
 
 function contarJudicializadasNoMes(mesStr){
-  // mesStr no formato 'YYYY-MM'. Conta processos cuja operação foi celebrada
-  // naquele mês e que já têm data de ajuizamento preenchida (ou seja, já viraram processo).
-  return processosCache.filter(p => p.data_operacao && p.data_operacao.slice(0,7)===mesStr && p.data_ajuizamento).length;
+  // mesStr no formato 'YYYY-MM'. Conta CONTRATOS (ADEs) cuja operação foi
+  // celebrada naquele mês e cujo processo já tem data de ajuizamento
+  // preenchida (já virou ação judicial). Um processo com 3 ADEs conta como
+  // 3 contratos contestados — não como 1 — porque cada ADE é um contrato
+  // separado, mesmo estando na mesma ação (ex: Superendividamento).
+  return processosCache
+    .filter(p => p.data_operacao && p.data_operacao.slice(0,7)===mesStr && p.data_ajuizamento)
+    .reduce((soma,p) => soma + Math.max(1, (p.todosAdes||[]).length), 0);
 }
 
 function somarValorContestadoNoMes(mesStr){
@@ -2636,7 +2728,7 @@ async function salvarMetricaMensal(){
 function openNovoProcesso(){
   // Limpa todo campo de texto/data/número/textarea do formulário — sem isso,
   // o navegador mantém o que foi digitado no cadastro anterior.
-  ['np-numero','np-tribunal','np-nome','np-ade','np-valor-operacao','np-data-operacao',
+  ['np-numero','np-tribunal','np-nome','np-ade-novo','np-valor-operacao','np-data-operacao',
    'np-data-ajuizamento','np-valor-risco','np-resumo-simples'].forEach(id=>{
     document.getElementById(id).value = '';
   });
@@ -2647,9 +2739,62 @@ function openNovoProcesso(){
   preencherSelectDominio('np-banco','BANCO');
   preencherSelectDominio('np-convenio','CONVENIO');
   preencherSelectDominio('np-operacao','OPERACAO');
-  preencherSelectDominio('np-motivo','MOTIVO');
+  preencherSelectDominio('np-motivo-select','MOTIVO');
   preencherSelectDominio('np-situacao','SITUACAO_ATUAL');
+
+  window.__adesNovoProcesso = [];
+  renderListaAdesNovoProcesso();
+  window.__motivosNovoProcesso = [];
+  renderListaMotivosNovoProcesso();
+
   openModal('modal-novo-processo');
+}
+
+// ---------------- ADEs (um processo pode ter mais de um contrato contestado) ----------------
+function renderListaAdesNovoProcesso(){
+  const el = document.getElementById('np-ade-lista');
+  el.innerHTML = (window.__adesNovoProcesso||[]).map((ade,i)=>`
+    <span class="badge-robo" style="cursor:default;">${ade} <a href="javascript:void(0)" onclick="removerAdeNovoProcesso(${i})" style="color:inherit; margin-left:4px; text-decoration:none;" title="Remover">✕</a></span>
+  `).join('') || '<span class="field-note">Nenhum ADE adicionado ainda.</span>';
+}
+function adicionarAdeNovoProcesso(){
+  const campo = document.getElementById('np-ade-novo');
+  const valor = campo.value.trim().replace(/\D/g,'');
+  if(!valor){ toast('Digite um ADE válido (só números).'); return; }
+  window.__adesNovoProcesso = window.__adesNovoProcesso || [];
+  if(window.__adesNovoProcesso.includes(valor)){ toast('Esse ADE já foi adicionado.'); return; }
+  window.__adesNovoProcesso.push(valor);
+  campo.value = '';
+  renderListaAdesNovoProcesso();
+}
+function removerAdeNovoProcesso(i){
+  window.__adesNovoProcesso.splice(i,1);
+  renderListaAdesNovoProcesso();
+}
+
+// Na edição, cada adição/remoção já mexe direto no banco (o processo já
+// existe) — não fica só numa lista temporária como no cadastro.
+async function carregarAdesProcessoExistente(processoId){
+  const { data } = await sb.from('processo_ades').select('id, ade').eq('processo_id', processoId).order('ade');
+  const el = document.getElementById('det-ade-lista');
+  el.innerHTML = (data||[]).map(a=>`
+    <span class="badge-robo" style="cursor:default;">${a.ade} <a href="javascript:void(0)" onclick="removerAdeProcessoExistente('${a.id}','${processoId}')" style="color:inherit; margin-left:4px; text-decoration:none;" title="Remover">✕</a></span>
+  `).join('') || '<span class="field-note">Nenhum ADE cadastrado ainda.</span>';
+}
+async function adicionarAdeProcessoExistente(){
+  const campo = document.getElementById('det-ade-novo');
+  const valor = campo.value.trim().replace(/\D/g,'');
+  if(!valor){ toast('Digite um ADE válido (só números).'); return; }
+  const { error } = await sb.from('processo_ades').insert({ processo_id: processoAtualId, ade: valor });
+  if(error){ toast('Erro: '+error.message+(error.code==='23505' ? ' (esse ADE já está cadastrado neste processo)' : '')); return; }
+  campo.value = '';
+  await carregarAdesProcessoExistente(processoAtualId);
+}
+async function removerAdeProcessoExistente(adeId, processoId){
+  if(!confirm('Remover este ADE do processo?')) return;
+  const { error } = await sb.from('processo_ades').delete().eq('id', adeId);
+  if(error){ toast('Erro: '+error.message); return; }
+  await carregarAdesProcessoExistente(processoId);
 }
 
 // ---------------- EVIDÊNCIAS ENVIADAS AO BANCO ----------------
@@ -2687,14 +2832,18 @@ function preencherCampoEvidencias(prefixo, valor){
 // Superendividamento e Revisional ficam de fora da separação — não costumam
 // envolver pedido de dano moral/material da mesma forma que os demais
 // motivos, então continuam com um valor único de condenação.
+// Mostra campo único de condenação se QUALQUER motivo do processo for
+// Superendividamento ou Revisional (não precisa que todos sejam) — decisão
+// confirmada: presença desses motivos já é suficiente pra manter simples.
 const SITUACOES_DESFAVORAVEIS = ['SENTENÇA PROCEDENTE', 'SENTENÇA PARCIALMENTE PROCEDENTE', 'RECURSO DESFAVORÁVEL (À KONSI)'];
 const MOTIVOS_SEM_SEPARACAO_DANO = ['SUPERENDIVIDAMENTO', 'REVISIONAL'];
 
 function aplicarDestaqueCondenacao(){
   const situacao = document.getElementById('det-situacao').value;
-  const motivo = document.getElementById('det-motivo').value;
+  const motivos = window.__motivosProcessoAtual || [];
   const desfavoravel = SITUACOES_DESFAVORAVEIS.includes(situacao);
-  const separaDano = desfavoravel && !MOTIVOS_SEM_SEPARACAO_DANO.includes(motivo);
+  const temMotivoExcecao = motivos.some(m => MOTIVOS_SEM_SEPARACAO_DANO.includes(m));
+  const separaDano = desfavoravel && !temMotivoExcecao;
 
   const wrapUnico = document.getElementById('det-condenacao-wrap');
   const campoUnico = document.getElementById('det-valor-condenacao');
@@ -2727,17 +2876,72 @@ function atualizarSomaDanos(){
   document.getElementById('det-dano-soma-nota').textContent = `Total (dano moral + material): ${fmtMoney(moral + material)} — esse total é o que fica salvo como "valor da condenação".`;
 }
 
+// Superendividamento zera o valor em risco SÓ quando é o ÚNICO motivo do
+// processo — se vier junto com outro motivo (ex: Venda casada), esse outro
+// motivo pode carregar risco real, então o campo continua editável.
 function aplicarRegraSuperendividamento(prefixo){
-  const motivo = document.getElementById(`${prefixo}-motivo`).value;
+  const motivos = prefixo==='np' ? (window.__motivosNovoProcesso||[]) : (window.__motivosProcessoAtual||[]);
   const campoValor = document.getElementById(`${prefixo}-valor-risco`);
-  if(motivo === 'SUPERENDIVIDAMENTO'){
+  if(motivos.length === 1 && motivos[0] === 'SUPERENDIVIDAMENTO'){
     campoValor.value = '0,00';
     campoValor.disabled = true;
-    campoValor.title = 'Superendividamento não questiona a "boa venda" — valor em risco fica zerado automaticamente.';
+    campoValor.title = 'Superendividamento é o único motivo deste processo — não questiona a "boa venda", valor em risco fica zerado automaticamente.';
   } else {
     campoValor.disabled = false;
     campoValor.title = '';
   }
+}
+
+// ---------------- MOTIVOS (um processo pode ter mais de um) ----------------
+function renderListaMotivosNovoProcesso(){
+  const el = document.getElementById('np-motivo-lista');
+  el.innerHTML = (window.__motivosNovoProcesso||[]).map((m,i)=>`
+    <span class="badge-robo" style="cursor:default;">${m} <a href="javascript:void(0)" onclick="removerMotivoNovoProcesso(${i})" style="color:inherit; margin-left:4px; text-decoration:none;" title="Remover">✕</a></span>
+  `).join('') || '<span class="field-note">Nenhum motivo adicionado ainda.</span>';
+  aplicarRegraSuperendividamento('np');
+}
+function adicionarMotivoNovoProcesso(){
+  const select = document.getElementById('np-motivo-select');
+  const valor = select.value;
+  if(!valor || valor==='__novo__'){ toast('Escolha um motivo antes de adicionar.'); return; }
+  window.__motivosNovoProcesso = window.__motivosNovoProcesso || [];
+  if(window.__motivosNovoProcesso.includes(valor)){ toast('Esse motivo já foi adicionado.'); return; }
+  window.__motivosNovoProcesso.push(valor);
+  renderListaMotivosNovoProcesso();
+}
+function removerMotivoNovoProcesso(i){
+  window.__motivosNovoProcesso.splice(i,1);
+  renderListaMotivosNovoProcesso();
+}
+
+// Na edição, cada adição/remoção já mexe direto no banco (o processo já
+// existe) — a lista atual fica guardada em window.__motivosProcessoAtual
+// pra alimentar as regras (Superendividamento, dano moral/material) sem
+// precisar reconsultar o banco toda hora.
+async function carregarMotivosProcessoExistente(processoId){
+  const { data } = await sb.from('processo_motivos').select('id, motivo').eq('processo_id', processoId).order('motivo');
+  window.__motivosProcessoAtual = (data||[]).map(m=>m.motivo);
+  const el = document.getElementById('det-motivo-lista');
+  el.innerHTML = (data||[]).map(m=>`
+    <span class="badge-robo" style="cursor:default;">${m.motivo} <a href="javascript:void(0)" onclick="removerMotivoProcessoExistente('${m.id}','${processoId}')" style="color:inherit; margin-left:4px; text-decoration:none;" title="Remover">✕</a></span>
+  `).join('') || '<span class="field-note">Nenhum motivo cadastrado ainda.</span>';
+  aplicarRegraSuperendividamento('det');
+  aplicarDestaqueCondenacao();
+}
+async function adicionarMotivoProcessoExistente(){
+  const select = document.getElementById('det-motivo-select');
+  const valor = select.value;
+  if(!valor || valor==='__novo__'){ toast('Escolha um motivo antes de adicionar.'); return; }
+  const { error } = await sb.from('processo_motivos').insert({ processo_id: processoAtualId, motivo: valor });
+  if(error){ toast('Erro: '+error.message+(error.code==='23505' ? ' (esse motivo já está cadastrado neste processo)' : '')); return; }
+  await carregarMotivosProcessoExistente(processoAtualId);
+}
+async function removerMotivoProcessoExistente(motivoId, processoId){
+  if((window.__motivosProcessoAtual||[]).length <= 1){ toast('O processo precisa de pelo menos um motivo — adicione outro antes de remover este.'); return; }
+  if(!confirm('Remover este motivo do processo?')) return;
+  const { error } = await sb.from('processo_motivos').delete().eq('id', motivoId);
+  if(error){ toast('Erro: '+error.message); return; }
+  await carregarMotivosProcessoExistente(processoId);
 }
 
 const LABEL_EVIDENCIAS = {
@@ -2850,20 +3054,22 @@ function aplicarResultadoQuestionarioRisco(){
 }
 
 async function salvarNovoProcesso(){
+  const motivos = window.__motivosNovoProcesso || [];
+  if(!motivos.length){ toast('Adicione ao menos um motivo à lista.'); return; }
+
   const payload = {
     numero_processo: document.getElementById('np-numero').value.trim(),
     tribunal: document.getElementById('np-tribunal').value.trim(),
     nome_cliente: document.getElementById('np-nome').value.trim(),
-    ade: document.getElementById('np-ade').value.trim(),
     banco: document.getElementById('np-banco').value,
     convenio: document.getElementById('np-convenio').value || null,
     tipo_operacao: document.getElementById('np-operacao').value || null,
-    motivo: document.getElementById('np-motivo').value,
     valor_operacao: parseNumeroBR(document.getElementById('np-valor-operacao').value),
     data_operacao: document.getElementById('np-data-operacao').value || null,
     data_ajuizamento: document.getElementById('np-data-ajuizamento').value || null,
     classificacao_risco: 'BAIXO', // sempre começa Baixo — reclassificação só pelo questionário guiado, depois de cadastrado
-    valor_risco: document.getElementById('np-motivo').value==='SUPERENDIVIDAMENTO' ? 0 : parseNumeroBR(document.getElementById('np-valor-risco').value),
+    // Superendividamento só zera o risco quando é o ÚNICO motivo da lista.
+    valor_risco: (motivos.length===1 && motivos[0]==='SUPERENDIVIDAMENTO') ? 0 : parseNumeroBR(document.getElementById('np-valor-risco').value),
     situacao_atual: document.getElementById('np-situacao').value.trim() || 'AGUARDANDO CITAÇÃO/CIÊNCIA',
     resumo_simples: document.getElementById('np-resumo-simples').value.trim() || null,
     situacao_evidencias: calcularSituacaoEvidencias('np'),
@@ -2878,6 +3084,16 @@ async function salvarNovoProcesso(){
   }
   const { data: novoProcesso, error } = await sb.from('processos_judiciais').insert(payload).select('id, numero_processo').single();
   if(error){ toast('Erro ao salvar: '+error.message); return; }
+
+  // Grava todo ADE e todo motivo que foram adicionados à lista antes de
+  // salvar — cada ADE vira um "contrato contestado" nas métricas, e cada
+  // motivo entra em seu próprio balde nos relatórios "por motivo".
+  const ades = window.__adesNovoProcesso || [];
+  if(ades.length){
+    await sb.from('processo_ades').insert(ades.map(ade=>({ processo_id: novoProcesso.id, ade })));
+  }
+  await sb.from('processo_motivos').insert(motivos.map(motivo=>({ processo_id: novoProcesso.id, motivo })));
+
   toast('Processo cadastrado. Consultando o DataJud...');
   closeModal('modal-novo-processo');
   await carregarProcessos(); await carregarDashboard();
@@ -2924,6 +3140,8 @@ async function enriquecerProcessoComDatajud(processoId, numeroProcesso){
 // Isso não substitui o cadastro manual (salvarNovoProcesso) — é um caminho
 // adicional só para cadastrar vários processos de uma vez.
 let csvLinhasValidas = [];
+let csvAdesPorNumero = {}; // numero_processo -> [ade1, ade2, ...], preenchido durante a validação
+let csvMotivosPorNumero = {}; // numero_processo -> [motivo1, motivo2, ...], idem
 
 function abrirImportarCsv(){
   csvLinhasValidas = [];
@@ -3025,6 +3243,8 @@ function processarLinhasCsv(linhas){
   const existentes = new Set(processosCache.map(p=>p.numero_processo));
   const vistosNoArquivo = new Set();
   csvLinhasValidas = [];
+  csvAdesPorNumero = {};
+  csvMotivosPorNumero = {};
   const linhasPreview = [];
   let countExistentes = 0, countDupArquivo = 0, countInvalidos = 0;
 
@@ -3048,15 +3268,22 @@ function processarLinhasCsv(linhas){
 
     if(!status){
       vistosNoArquivo.add(numero);
+      // ADE e motivo podem vir com mais de um valor na mesma célula
+      // (ex: "111, 222" ou "REVISIONAL, VENDA CASADA") — cada um vira um
+      // registro separado. Guardados à parte, não vão direto no payload de
+      // processos_judiciais (que só aceita um valor de cada por linha).
+      const adesDaLinha = (linha.ade||'').split(/[,;/]/).map(a=>a.trim().replace(/\D/g,'')).filter(Boolean);
+      if(adesDaLinha.length) csvAdesPorNumero[numero] = adesDaLinha;
+      const motivosDaLinha = (linha.motivo||'').split(/[,;/]/).map(m=>m.trim().toUpperCase()).filter(Boolean);
+      csvMotivosPorNumero[numero] = motivosDaLinha.length ? motivosDaLinha : ['OUTRO'];
+
       const payload = {
         numero_processo: numero,
         tribunal: tribunal,
         nome_cliente: nome,
-        ade: (linha.ade||'').trim() || null,
         banco: banco,
         convenio: (linha.convenio||'').trim().toUpperCase() || null,
         tipo_operacao: (linha.tipo_operacao||'').trim().toUpperCase() || null,
-        motivo: (linha.motivo||'').trim().toUpperCase() || 'OUTRO',
         valor_operacao: parseFloat((linha.valor_operacao||'').replace(',','.')) || null,
         data_operacao: normalizarDataCsv(linha.data_operacao),
         data_ajuizamento: normalizarDataCsv(linha.data_ajuizamento),
@@ -3064,9 +3291,11 @@ function processarLinhasCsv(linhas){
         // risco — a classificação só é feita pelo questionário guiado, dentro
         // do sistema, nunca por valor externo importado.
         classificacao_risco: 'BAIXO',
-        // Superendividamento não questiona a "boa venda" — valor em risco
-        // sempre zerado, mesmo que a planilha traga outro valor na coluna.
-        valor_risco: (linha.motivo||'').trim().toUpperCase()==='SUPERENDIVIDAMENTO' ? 0 : (parseFloat((linha.valor_risco||'').replace(',','.')) || null),
+        // Superendividamento só zera o valor em risco quando é o ÚNICO
+        // motivo da linha — se vier junto com outro motivo, mantém o valor
+        // (ou o que a planilha trouxer), porque o outro motivo pode ter risco real.
+        valor_risco: (csvMotivosPorNumero[numero].length===1 && csvMotivosPorNumero[numero][0]==='SUPERENDIVIDAMENTO')
+          ? 0 : (parseFloat((linha.valor_risco||'').replace(',','.')) || null),
         // Nunca deixar undefined aqui: numa inserção em lote (várias linhas de
         // uma vez), colunas omitidas em algumas linhas viram NULL explícito
         // em vez de aplicar o valor padrão do banco — e situacao_atual não
@@ -3109,7 +3338,9 @@ async function confirmarImportacaoCsv(){
     if(p.banco && !opcoesCache.BANCO.includes(p.banco)) novosPorCategoria.BANCO.add(p.banco);
     if(p.convenio && !opcoesCache.CONVENIO.includes(p.convenio)) novosPorCategoria.CONVENIO.add(p.convenio);
     if(p.tipo_operacao && !opcoesCache.OPERACAO.includes(p.tipo_operacao)) novosPorCategoria.OPERACAO.add(p.tipo_operacao);
-    if(p.motivo && !opcoesCache.MOTIVO.includes(p.motivo)) novosPorCategoria.MOTIVO.add(p.motivo);
+  });
+  Object.values(csvMotivosPorNumero).forEach(lista=>{
+    lista.forEach(m=>{ if(m && !opcoesCache.MOTIVO.includes(m)) novosPorCategoria.MOTIVO.add(m); });
   });
   for(const categoria of Object.keys(novosPorCategoria)){
     for(const valor of novosPorCategoria[categoria]){
@@ -3122,10 +3353,27 @@ async function confirmarImportacaoCsv(){
   const TAMANHO_LOTE = 200;
   let inseridos = 0;
   const erros = [];
+  const linhasDeAdesParaInserir = [];
+  const linhasDeMotivosParaInserir = [];
   for(let i=0; i<csvLinhasValidas.length; i+=TAMANHO_LOTE){
     const lote = csvLinhasValidas.slice(i, i+TAMANHO_LOTE);
-    const { error, count } = await sb.from('processos_judiciais').insert(lote, { count:'exact' });
-    if(error) erros.push(error.message); else inseridos += lote.length;
+    const { data: criados, error } = await sb.from('processos_judiciais').insert(lote).select('id, numero_processo');
+    if(error){ erros.push(error.message); continue; }
+    inseridos += lote.length;
+    (criados||[]).forEach(p=>{
+      (csvAdesPorNumero[p.numero_processo]||[]).forEach(ade=>{
+        linhasDeAdesParaInserir.push({ processo_id: p.id, ade });
+      });
+      (csvMotivosPorNumero[p.numero_processo]||['OUTRO']).forEach(motivo=>{
+        linhasDeMotivosParaInserir.push({ processo_id: p.id, motivo });
+      });
+    });
+  }
+  if(linhasDeAdesParaInserir.length){
+    await sb.from('processo_ades').insert(linhasDeAdesParaInserir);
+  }
+  if(linhasDeMotivosParaInserir.length){
+    await sb.from('processo_motivos').insert(linhasDeMotivosParaInserir);
   }
 
   toast(erros.length
@@ -3170,12 +3418,12 @@ function renderDetView(p){
     ${resumoHtml}
     <div class="fields-grid">
       ${fc('Cliente', p.nome_cliente)}
-      ${fc('ADE', p.ade||'—')}
+      ${fc('ADE(s)', (p.todosAdes && p.todosAdes.length) ? p.todosAdes.join(', ') : '—')}
       ${fc('Tribunal', p.tribunal||'—')}
       ${fc('Banco', p.banco)}
       ${fc('Convênio', p.convenio||'—')}
       ${fc('Tipo de operação', p.tipo_operacao||'—')}
-      ${fc('Motivo', p.motivo)}
+      ${fc('Motivo(s)', (p.todosMotivos && p.todosMotivos.length) ? p.todosMotivos.join(', ') : (p.motivo||'—'))}
       ${fc('Valor da operação', fmtMoney(p.valor_operacao))}
       ${fc('Data da operação', fmtDate(p.data_operacao))}
       ${fc('Data de ajuizamento', fmtDate(p.data_ajuizamento))}
@@ -3288,12 +3536,14 @@ async function carregarLogEdicoesProcesso(processoId){
 function abrirEdicaoProcesso(){
   const p = processosCache.find(x=>x.id===processoAtualId);
   document.getElementById('det-nome').value = p.nome_cliente || '';
-  document.getElementById('det-ade').value = p.ade || '';
+  document.getElementById('det-ade-novo').value = '';
+  carregarAdesProcessoExistente(processoAtualId); // não precisa esperar — preenche assim que chegar
   document.getElementById('det-tribunal').value = p.tribunal || '';
   preencherSelectDominio('det-banco','BANCO', p.banco);
   preencherSelectDominio('det-convenio','CONVENIO', p.convenio);
   preencherSelectDominio('det-operacao','OPERACAO', p.tipo_operacao);
-  preencherSelectDominio('det-motivo','MOTIVO', p.motivo);
+  preencherSelectDominio('det-motivo-select','MOTIVO');
+  carregarMotivosProcessoExistente(processoAtualId); // não precisa esperar — preenche assim que chegar
   document.getElementById('det-valor-operacao').value = fmtNumeroBR(p.valor_operacao);
   document.getElementById('det-data-operacao').value = p.data_operacao || '';
   document.getElementById('det-data-ajuizamento').value = p.data_ajuizamento || '';
@@ -3321,8 +3571,9 @@ function cancelarEdicaoProcesso(){
 }
 
 async function salvarAtualizacaoProcesso(){
-  const motivoAtual = document.getElementById('det-motivo').value;
-  const separaDanoAtual = !MOTIVOS_SEM_SEPARACAO_DANO.includes(motivoAtual);
+  const motivosAtuais = window.__motivosProcessoAtual || [];
+  if(!motivosAtuais.length){ toast('O processo precisa de pelo menos um motivo cadastrado.'); return; }
+  const separaDanoAtual = !motivosAtuais.some(m => MOTIVOS_SEM_SEPARACAO_DANO.includes(m));
   const danoMoral = separaDanoAtual ? parseNumeroBR(document.getElementById('det-valor-dano-moral').value) : null;
   const danoMaterial = separaDanoAtual ? parseNumeroBR(document.getElementById('det-valor-dano-material').value) : null;
   // Nos motivos com separação, o valor da condenação é sempre a soma dos
@@ -3333,17 +3584,15 @@ async function salvarAtualizacaoProcesso(){
 
   const payload = {
     nome_cliente: document.getElementById('det-nome').value.trim(),
-    ade: document.getElementById('det-ade').value.trim(),
     tribunal: document.getElementById('det-tribunal').value.trim(),
     banco: document.getElementById('det-banco').value,
     convenio: document.getElementById('det-convenio').value || null,
     tipo_operacao: document.getElementById('det-operacao').value || null,
-    motivo: document.getElementById('det-motivo').value,
     valor_operacao: parseNumeroBR(document.getElementById('det-valor-operacao').value),
     data_operacao: document.getElementById('det-data-operacao').value || null,
     data_ajuizamento: document.getElementById('det-data-ajuizamento').value || null,
     classificacao_risco: document.getElementById('det-risco').value,
-    valor_risco: document.getElementById('det-motivo').value==='SUPERENDIVIDAMENTO' ? 0 : parseNumeroBR(document.getElementById('det-valor-risco').value),
+    valor_risco: (motivosAtuais.length===1 && motivosAtuais[0]==='SUPERENDIVIDAMENTO') ? 0 : parseNumeroBR(document.getElementById('det-valor-risco').value),
     situacao_atual: document.getElementById('det-situacao').value.trim(),
     situacao_evidencias: calcularSituacaoEvidencias('det'),
     resumo_simples: document.getElementById('det-resumo-simples').value.trim() || null,
