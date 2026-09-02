@@ -52,22 +52,6 @@ function normalizarTexto(s: string): string {
 // "improcedente" contém a palavra "procedente" dentro dela — se checasse
 // "procedente" primeiro, ia errar toda sentença improcedente.
 // Isso é só uma SUGESTÃO pra revisão humana — nunca aplicada sozinha.
-//
-// IMPORTANTE — por que isso só existe aqui, e não na sync-datajud: a API
-// pública do DataJud devolve só METADADOS estruturados do processo (classe,
-// órgão julgador, movimentações por código), nunca o texto/trecho da decisão.
-// Só o DJEN traz o recorte informativo do CNJ com o texto da intimação/
-// decisão em si — por isso a detecção de resultado por palavra-chave é
-// necessariamente exclusiva desta função. Se um dia o DataJud passar a
-// devolver o teor da decisão, esta lógica poderia migrar/duplicar para lá,
-// mas hoje não há como fazer isso a partir da sync-datajud.
-//
-// Detecta só SENTENÇA — é o único caso inequívoco: a Konsi é sempre ré,
-// então "procedente" é sempre desfavorável e "improcedente" é sempre
-// favorável, não importa o contexto. O valor retornado aqui é gravado em
-// comunicacoes_djen.resultado_sugerido e pode ser aplicado com um clique
-// na tela do processo — seguro porque SENTENÇA PROCEDENTE/IMPROCEDENTE/
-// PARCIALMENTE PROCEDENTE continuam sendo situações válidas.
 function detectarResultadoNoTexto(textoOriginal: string): string | null {
   const t = normalizarTexto(textoOriginal);
 
@@ -75,28 +59,14 @@ function detectarResultadoNoTexto(textoOriginal: string): string | null {
     if (t.includes("nao acolh") || t.includes("rejeit")) return "EMBARGOS DE DECLARAÇÃO REJEITADOS";
     if (t.includes("acolh")) return "EMBARGOS DE DECLARAÇÃO ACOLHIDOS";
   }
+  if (t.includes("parcialmente provido")) return "RECURSO PARCIALMENTE PROVIDO";
+  if (t.includes("nao provido") || t.includes("improvido")) return "RECURSO IMPROVIDO";
+  if (t.includes("recurso") && t.includes("provido")) return "RECURSO PROVIDO";
 
   if (t.includes("parcialmente procedente") || t.includes("procedente em parte")) return "SENTENÇA PARCIALMENTE PROCEDENTE";
   if (t.includes("improcedente")) return "SENTENÇA IMPROCEDENTE";
   if (t.includes("procedente")) return "SENTENÇA PROCEDENTE";
 
-  return null;
-}
-
-// Detecta menção a resultado de RECURSO ("provido"/"improvido"/"parcialmente
-// provido") — mas isso é usado SÓ como palavra-chave pra decidir que existe
-// algo relevante pra revisar e pra nomear a tarefa/aviso do Slack. NUNCA é
-// gravado em comunicacoes_djen.resultado_sugerido nem aplicado à Situação
-// Atual com um clique, porque "provido"/"improvido" sozinho não diz se foi
-// bom ou ruim pra Konsi sem saber QUEM recorreu — e essa informação não está
-// disponível aqui. Quem lê o texto completo e sabe quem recorreu precisa
-// escolher manualmente entre "ACÓRDÃO FAVORÁVEL" e "ACÓRDÃO DESFAVORÁVEL"
-// (migração 35) na edição do processo.
-function detectarAchadoRecurso(textoOriginal: string): string | null {
-  const t = normalizarTexto(textoOriginal);
-  if (t.includes("parcialmente provido")) return "RECURSO PARCIALMENTE PROVIDO";
-  if (t.includes("nao provido") || t.includes("improvido")) return "RECURSO IMPROVIDO";
-  if (t.includes("recurso") && t.includes("provido")) return "RECURSO PROVIDO";
   return null;
 }
 
@@ -135,14 +105,24 @@ async function verificarAlertaMotivo(admin: any) {
 
   const { data: recentes } = await admin
     .from("processos_judiciais")
-    .select("motivo, criado_em")
+    .select("id, criado_em")
     .gte("criado_em", corteStr)
     .lte("criado_em", hojeStr + "T23:59:59");
 
+  const idsRecentes = (recentes || []).map((p: any) => p.id);
+  if (!idsRecentes.length) return;
+
+  // Um processo agora pode ter mais de um motivo — cada um conta pro seu
+  // próprio balde, igual já é feito no painel "Últimos 15 dias" do sistema.
+  const { data: motivosDosRecentes } = await admin
+    .from("processo_motivos")
+    .select("processo_id, motivo")
+    .in("processo_id", idsRecentes);
+
   const porMotivo: Record<string, number> = {};
-  (recentes || []).forEach((p: any) => {
-    const m = p.motivo || "(sem motivo)";
-    porMotivo[m] = (porMotivo[m] || 0) + 1;
+  (motivosDosRecentes || []).forEach((m: any) => {
+    const nome = m.motivo || "(sem motivo)";
+    porMotivo[nome] = (porMotivo[nome] || 0) + 1;
   });
 
   for (const [motivo, n] of Object.entries(porMotivo)) {
@@ -217,12 +197,10 @@ async function processarUmProcessoDjen(admin: any, processo: any) {
 
   let novas = 0;
   let maisRecente: any = null;
-  let melhorSugestao: string | null = null; // só sentença — seguro pra aplicar com um clique
-  let melhorAchadoRecurso: string | null = null; // só sinaliza/nomeia a tarefa — nunca aplicável direto
+  let melhorSugestao: string | null = null;
 
   for (const item of itens) {
     const sugestao = detectarResultadoNoTexto(item.texto);
-    const achadoRecurso = detectarAchadoRecurso(item.texto);
     const { error } = await admin.from("comunicacoes_djen").insert({
       processo_id: processo.id,
       comunicacao_id_externa: item.id,
@@ -236,34 +214,18 @@ async function processarUmProcessoDjen(admin: any, processo: any) {
       link: item.link ?? null,
       meio_completo: item.meiocompleto ?? null,
       destinatarios: item.destinatarios ?? null,
-      // Só a sugestão de SENTENÇA vai pra cá — é o único caso seguro de
-      // aplicar direto na Situação Atual com um clique na tela do processo.
-      // Achado de recurso NUNCA entra aqui (ver detectarAchadoRecurso).
       resultado_sugerido: sugestao,
     });
     if (!error) novas++;
     if (!maisRecente || (item.data_disponibilizacao > maisRecente.data_disponibilizacao)) maisRecente = item;
     if (sugestao) melhorSugestao = sugestao; // fica com a última encontrada, tipicamente a mais recente também
-    if (achadoRecurso) melhorAchadoRecurso = achadoRecurso;
   }
 
-  // Preenche campos da capa processual só se ainda estiverem vazios (nunca
-  // sobrescreve um dado que já existe, seja de onde vier). Isso é
-  // complemento PROPOSITAL à sync-datajud: o DataJud é a fonte estruturada
-  // "canônica", mas às vezes não retorna classe/órgão julgador ou vem
-  // incompleto — o DJEN, que consulta as comunicações publicadas, muitas
-  // vezes já tem esse dado disponível. classe_processual_fonte/
-  // orgao_julgador_fonte (migração 34) registram qual robô preencheu, pra
-  // dar pra auditar depois qual fonte está de fato alimentando cada processo.
+  // Preenche campos da capa processual só se o DataJud não tiver preenchido
+  // (nunca sobrescreve um dado que já existe vindo de outra fonte).
   const camposFaltando: Record<string, any> = {};
-  if (!processo.classe_processual && maisRecente?.nomeClasse) {
-    camposFaltando.classe_processual = maisRecente.nomeClasse;
-    camposFaltando.classe_processual_fonte = "DJEN";
-  }
-  if (!processo.orgao_julgador && maisRecente?.nomeOrgao) {
-    camposFaltando.orgao_julgador = maisRecente.nomeOrgao;
-    camposFaltando.orgao_julgador_fonte = "DJEN";
-  }
+  if (!processo.classe_processual && maisRecente?.nomeClasse) camposFaltando.classe_processual = maisRecente.nomeClasse;
+  if (!processo.orgao_julgador && maisRecente?.nomeOrgao) camposFaltando.orgao_julgador = maisRecente.nomeOrgao;
   if (Object.keys(camposFaltando).length) {
     await admin.from("processos_judiciais").update(camposFaltando).eq("id", processo.id);
   }
@@ -276,12 +238,7 @@ async function processarUmProcessoDjen(admin: any, processo: any) {
       .select("id").eq("processo_id", processo.id).eq("origem", "ROBO_DATAJUD")
       .in("status", ["PENDENTE", "ATRASADA"]).limit(1);
     if (!tarefaAberta?.length) {
-      // Achado de recurso tem prioridade no título/aviso — normalmente vem
-      // depois da sentença no trâmite, e SEMPRE exige leitura humana (nunca
-      // aplicável com um clique, ver detectarAchadoRecurso).
-      const titulo = melhorAchadoRecurso
-        ? `Recurso identificado no DJEN (${melhorAchadoRecurso}) — analisar o texto completo e definir se o acórdão foi FAVORÁVEL ou DESFAVORÁVEL à Konsi, atualizando a Situação Atual manualmente`
-        : melhorSugestao
+      const titulo = melhorSugestao
         ? `Possível resultado identificado no DJEN: ${melhorSugestao} — confirmar e atualizar Situação Atual`
         : `Nova comunicação no DJEN: ${maisRecente.tipoComunicacao || "publicação"}`;
       const responsavel_id = await buscarResponsavelPadrao(admin);
@@ -293,12 +250,7 @@ async function processarUmProcessoDjen(admin: any, processo: any) {
         origem: "ROBO_DATAJUD",
         responsavel_id,
       });
-      const textoSlack = melhorAchadoRecurso
-        ? `📋 *Recurso* identificado no DJEN (${melhorAchadoRecurso}) — processo ${processo.numero_processo}. Analisar se o acórdão foi Favorável ou Desfavorável à Konsi e atualizar manualmente.`
-        : melhorSugestao
-        ? `📋 Possível resultado no *DJEN*: ${melhorSugestao} — processo ${processo.numero_processo}. Tarefa criada no sistema.`
-        : `📋 Nova comunicação no *DJEN* — processo ${processo.numero_processo}. Tarefa criada no sistema.`;
-      await notificarSlack(textoSlack);
+      await notificarSlack(`📋 ${melhorSugestao ? `Possível resultado no *DJEN*: ${melhorSugestao}` : `Nova comunicação no *DJEN*`} — processo ${processo.numero_processo}. Tarefa criada no sistema.`);
     }
   }
 
