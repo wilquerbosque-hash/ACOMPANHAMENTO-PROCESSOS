@@ -591,7 +591,7 @@
       <div class="panel">
         <h3>Condenações — valor médio por tribunal e motivo</h3>
         <p style="font-size:12px; color:var(--textSecondary); margin:-8px 0 14px;">
-          Só processos com sentença/acórdão desfavorável e valor de condenação já informado. Não entra no cálculo de provisão sugerida (ainda é só analítico) — com poucos casos, a média pode variar bastante; ganha estabilidade conforme mais processos forem concluídos.
+          Só processos com sentença/acórdão desfavorável e valor de condenação já informado — exceto Revisional (o valor ali costuma ser recálculo de saldo devedor, não indenização por dano moral/material, então não entra nessa média). Não entra no cálculo de provisão sugerida (ainda é só analítico) — com poucos casos, a média pode variar bastante; ganha estabilidade conforme mais processos forem concluídos.
         </p>
         <div id="compliance-condenacoes"></div>
       </div>
@@ -2391,10 +2391,18 @@ async function carregarLogAuditoriaRisco(){
 // ---------------- CONDENAÇÕES: VALOR MÉDIO POR TRIBUNAL/MOTIVO ----------------
 function renderPainelCondenacoes(){
   const el = document.getElementById('compliance-condenacoes');
-  const comCondenacao = processosCache.filter(p => p.valor_condenacao != null);
+  // Revisional fica de fora dessa média de propósito: o valor ali costuma
+  // refletir recálculo de saldo devedor (juros, condições do contrato), não
+  // indenização por dano moral/material — misturar os dois tipos de valor
+  // na mesma média distorce o número. A ideia aqui é medir ações
+  // indenizatórias convencionais.
+  const comCondenacao = processosCache.filter(p =>
+    p.valor_condenacao != null &&
+    !((p.todosMotivos && p.todosMotivos.length ? p.todosMotivos : [p.motivo]).includes('REVISIONAL'))
+  );
 
   if(!comCondenacao.length){
-    el.innerHTML = emptyState('Nenhuma condenação registrada ainda', 'Preencha "Valor da condenação" na edição de um processo com sentença/acórdão desfavorável para começar a alimentar este painel.');
+    el.innerHTML = emptyState('Nenhuma condenação registrada ainda', 'Preencha "Valor da condenação" na edição de um processo com sentença/acórdão desfavorável para começar a alimentar este painel (processos de Revisional não entram nessa média — veja a nota acima).');
     return;
   }
 
