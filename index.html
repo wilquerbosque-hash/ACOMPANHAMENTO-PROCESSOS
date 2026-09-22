@@ -3064,6 +3064,10 @@ async function salvarNovoProcesso(){
     banco: document.getElementById('np-banco').value,
     convenio: document.getElementById('np-convenio').value || null,
     tipo_operacao: document.getElementById('np-operacao').value || null,
+    // Já manda o primeiro motivo direto aqui, sem depender só do gatilho de
+    // sincronização — evita cair no valor padrão da coluna quando vários
+    // motivos são inseridos juntos logo em seguida.
+    motivo: motivos[0],
     valor_operacao: parseNumeroBR(document.getElementById('np-valor-operacao').value),
     data_operacao: document.getElementById('np-data-operacao').value || null,
     data_ajuizamento: document.getElementById('np-data-ajuizamento').value || null,
@@ -3284,6 +3288,9 @@ function processarLinhasCsv(linhas){
         banco: banco,
         convenio: (linha.convenio||'').trim().toUpperCase() || null,
         tipo_operacao: (linha.tipo_operacao||'').trim().toUpperCase() || null,
+        // Já manda o primeiro motivo direto aqui — mesma correção aplicada
+        // no cadastro manual, evita cair no valor padrão da coluna.
+        motivo: csvMotivosPorNumero[numero][0],
         valor_operacao: parseFloat((linha.valor_operacao||'').replace(',','.')) || null,
         data_operacao: normalizarDataCsv(linha.data_operacao),
         data_ajuizamento: normalizarDataCsv(linha.data_ajuizamento),
