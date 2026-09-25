@@ -76,20 +76,25 @@ Deno.serve(async (req) => {
         nome_exibicao: perfilPorId[u.id]?.nome_exibicao || "(sem nome cadastrado)",
         is_admin: perfilPorId[u.id]?.is_admin || false,
         ativo: perfilPorId[u.id]?.ativo ?? true,
+        tipo_usuario: perfilPorId[u.id]?.tipo_usuario || "KONSI",
       }));
       return json({ usuarios: lista }, 200, corsHeaders);
     }
 
     if (action === "criar") {
-      const { email, nome_exibicao, is_admin } = body;
+      const { email, nome_exibicao, is_admin, tipo_usuario } = body;
       if (!email || !nome_exibicao) return json({ error: "E-mail e nome são obrigatórios." }, 400, corsHeaders);
+      // "ESCRITORIO" nunca pode ser admin — são naturezas de acesso
+      // diferentes, e um login de escritório com permissão de admin
+      // quebraria toda a lógica de bloqueio das políticas de segurança.
+      const tipo = tipo_usuario === "ESCRITORIO" ? "ESCRITORIO" : "KONSI";
       const senhaProvisoria = gerarSenhaProvisoria();
       const { data: novoUsuario, error } = await admin.auth.admin.createUser({
         email, password: senhaProvisoria, email_confirm: true,
       });
       if (error) throw error;
       await admin.from("usuarios_perfil").insert({
-        id: novoUsuario.user.id, nome_exibicao, is_admin: !!is_admin,
+        id: novoUsuario.user.id, nome_exibicao, is_admin: tipo === "ESCRITORIO" ? false : !!is_admin, tipo_usuario: tipo,
       });
       return json({ ok: true, senha_provisoria: senhaProvisoria }, 200, corsHeaders);
     }
