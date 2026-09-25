@@ -370,6 +370,23 @@
   </div>
 </div>
 
+<!-- ============ PORTAL DO ESCRITÓRIO (login externo) ============ -->
+<div id="portal-escritorio" style="display:none; min-height:100vh; background:var(--bgBlack); padding:20px;">
+  <div style="max-width:680px; margin:0 auto;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; flex-wrap:wrap; gap:8px;">
+      <div style="display:flex; align-items:center; gap:8px;">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--konsiTeal)" stroke-width="2"><path d="m5 21 7-7 7 7M5 3h14M9 3v4m6-4v4M5 9h14v12H5z"/></svg>
+        <h2 style="margin:0; font-size:16px; color:var(--textPrimary);">Portal do escritório</h2>
+      </div>
+      <div style="font-size:12px; color:var(--textSecondary);">
+        <span id="portal-escritorio-nome"></span> · <a href="javascript:void(0)" onclick="doLogout()" style="color:var(--konsiTeal);">Sair</a>
+      </div>
+    </div>
+    <p style="font-size:12px; color:var(--textSecondary); margin:0 0 16px;">Processos em que a Konsi figura como parte. Clique num processo pra ver o histórico ou solicitar um documento novo.</p>
+    <div id="portal-escritorio-lista"></div>
+  </div>
+</div>
+
 <!-- ============ APP ============ -->
 <div id="app">
   <header class="topbar">
@@ -699,7 +716,7 @@
       </div>
       <div class="panel">
         <div class="table-wrap"><table id="tbl-usuarios">
-          <thead><tr><th>Nome</th><th>E-mail</th><th>Administrador</th><th>Status</th><th></th></tr></thead>
+          <thead><tr><th>Nome</th><th>E-mail</th><th>Tipo</th><th>Administrador</th><th>Status</th><th></th></tr></thead>
           <tbody></tbody>
         </table></div>
       </div>
@@ -770,6 +787,12 @@
       <div><label>Resumo da situação (linguagem simples, sem jargão jurídico)</label>
         <textarea id="np-resumo-simples" rows="3" placeholder="Ex: O processo está aguardando decisão do juiz sobre um pedido da outra parte; ainda sem data prevista para julgamento."></textarea>
       </div>
+    </div>
+    <div class="form-row single">
+      <label style="display:flex; align-items:center; gap:8px; font-weight:400;">
+        <input type="checkbox" id="np-e-parte" style="width:auto;">
+        A Konsi é parte neste processo (não só o banco parceiro) — habilita a aba de Subsídios pro escritório contratado
+      </label>
     </div>
     <div class="section-label"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3 4 6v6c0 5 4 8 8 9 4-1 8-4 8-9V6z"/><path d="m9 12 2 2 4-4"/></svg>Evidências enviadas ao banco</div>
     <div class="form-row">
@@ -1027,6 +1050,12 @@
             </div>
           </div>
           <div class="form-row single">
+            <label style="display:flex; align-items:center; gap:8px; font-weight:400;">
+              <input type="checkbox" id="det-e-parte" style="width:auto;">
+              A Konsi é parte neste processo (não só o banco parceiro) — habilita a aba de Subsídios pro escritório contratado
+            </label>
+          </div>
+          <div class="form-row single">
             <div><label>Resultado do processo</label>
               <select id="det-resultado">
                 <option value="EM_ANDAMENTO">Em andamento</option>
@@ -1076,6 +1105,12 @@
         <div class="section-label"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16v16H4z"/><path d="M8 8h8M8 12h8M8 16h4"/></svg>Comunicações do DJEN <span style="font-size:10px; font-weight:400; color:var(--textMuted);">(complemento — texto oficial e data de disponibilização)</span></div>
         <div id="det-comunicacoes-djen"></div>
 
+        <div id="det-subsidios-wrap" style="display:none;">
+          <div class="section-label"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M13 2v7h7"/></svg>Subsídios <span style="font-size:10px; font-weight:400; color:var(--textMuted);">(solicitações do escritório contratado)</span></div>
+          <div id="det-subsidios"></div>
+          <input type="file" id="input-arquivo-subsidio" style="display:none;" onchange="processarUploadSubsidio(event)">
+        </div>
+
         <div class="section-label"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6h11"/><path d="M9 12h11"/><path d="M9 18h11"/><path d="M4 6h.01"/><path d="M4 12h.01"/><path d="M4 18h.01"/></svg>Tarefas deste processo</div>
         <div id="det-tarefas"></div>
 
@@ -1093,7 +1128,12 @@
     <p class="field-note">O sistema gera uma senha provisória — copie e repasse pra pessoa. Ela pode trocar depois em "Esqueci minha senha".</p>
     <label>Nome</label><input id="nu-nome" placeholder="Nome exibido no sistema">
     <label>E-mail</label><input id="nu-email" type="email" placeholder="pessoa@konsi.com.br">
-    <label style="display:flex; align-items:center; gap:8px; text-transform:none;"><input type="checkbox" id="nu-admin" style="width:auto; margin:0;"> É administrador (pode gerenciar outros usuários)</label>
+    <label>Tipo de login</label>
+    <select id="nu-tipo" onchange="document.getElementById('nu-admin-wrap').style.display = this.value==='ESCRITORIO' ? 'none' : 'flex';">
+      <option value="KONSI">Konsi (acesso normal ao sistema)</option>
+      <option value="ESCRITORIO">Escritório externo (só o Portal de Subsídios, sem acesso ao resto do sistema)</option>
+    </select>
+    <label id="nu-admin-wrap" style="display:flex; align-items:center; gap:8px; text-transform:none;"><input type="checkbox" id="nu-admin" style="width:auto; margin:0;"> É administrador (pode gerenciar outros usuários)</label>
     <div class="form-actions">
       <button class="btn-secondary" onclick="closeModal('modal-novo-usuario')">Cancelar</button>
       <button class="btn-primary" style="width:auto" onclick="criarUsuario()">Criar usuário</button>
@@ -1152,8 +1192,20 @@ async function doLogout(){ await sb.auth.signOut(); location.reload(); }
 
 async function afterLogin(){
   document.getElementById('login-screen').style.display='none';
+  const { data: perfil } = await sb.from('usuarios_perfil').select('nome_exibicao, is_admin, tipo_usuario').eq('id', currentUser.id).single();
+
+  // Login do escritório externo: tela completamente separada, nunca carrega
+  // nada do sistema normal da Konsi (menu, dashboard, processos...) — a
+  // segurança de verdade está nas políticas do banco (RLS), mas nem
+  // oferecer esses elementos na tela já evita confusão.
+  if(perfil?.tipo_usuario === 'ESCRITORIO'){
+    document.getElementById('portal-escritorio').style.display='block';
+    document.getElementById('portal-escritorio-nome').textContent = perfil.nome_exibicao || currentUser.email;
+    await carregarPortalEscritorio();
+    return;
+  }
+
   document.getElementById('app').style.display='block';
-  const { data: perfil } = await sb.from('usuarios_perfil').select('nome_exibicao, is_admin').eq('id', currentUser.id).single();
   document.getElementById('user-name').textContent = perfil ? perfil.nome_exibicao : currentUser.email;
   currentUserIsAdmin = !!perfil?.is_admin;
   document.getElementById('nav-usuarios').style.display = currentUserIsAdmin ? 'inline-block' : 'none';
@@ -2477,6 +2529,252 @@ function exportarComplianceCsv(){
   link.click();
 }
 
+// ---------------- PORTAL DO ESCRITÓRIO (login externo) ----------------
+async function carregarPortalEscritorio(){
+  const { data: processos, error } = await sb.from('vw_processos_escritorio').select('*').order('numero_processo');
+  const el = document.getElementById('portal-escritorio-lista');
+  if(error || !processos?.length){
+    el.innerHTML = emptyState('Nenhum processo disponível ainda', 'Assim que um processo for marcado como "Konsi é parte", ele aparece aqui.');
+    return;
+  }
+  el.innerHTML = processos.map(p=>`
+    <div class="panel" style="margin-bottom:10px; cursor:pointer;" onclick="togglePortalProcesso('${p.id}')">
+      <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">
+        <div><b style="font-size:12.5px;">${p.numero_processo}</b><br><span style="font-size:11px; color:var(--textSecondary);">${p.nome_cliente||''} · ${p.banco||''}</span></div>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+      </div>
+      <div id="portal-detalhe-${p.id}" style="display:none; margin-top:14px;" onclick="event.stopPropagation()"></div>
+    </div>
+  `).join('');
+}
+
+function togglePortalProcesso(processoId){
+  const detalhe = document.getElementById(`portal-detalhe-${processoId}`);
+  const abrindo = detalhe.style.display === 'none';
+  detalhe.style.display = abrindo ? 'block' : 'none';
+  if(abrindo && !detalhe.dataset.carregado){
+    detalhe.dataset.carregado = '1';
+    renderPortalDetalheProcesso(processoId, detalhe);
+  }
+}
+
+function renderPortalDetalheProcesso(processoId, container){
+  container.innerHTML = `
+    <div style="border-top:1px solid var(--border); padding-top:12px;">
+      <div style="font-size:11.5px; font-weight:600; margin-bottom:8px;">Nova solicitação de subsídio</div>
+      <div style="display:flex; flex-direction:column; gap:8px; margin-bottom:10px;">
+        <label style="display:flex; align-items:center; gap:8px; font-size:12px; font-weight:400;"><input type="checkbox" class="portal-tipo-check" value="CONTRATO" style="width:auto;"> Contrato</label>
+        <label style="display:flex; align-items:center; gap:8px; font-size:12px; font-weight:400;"><input type="checkbox" class="portal-tipo-check" value="HISTORICO_CONVERSAS" style="width:auto;"> Histórico de conversas</label>
+        <label style="display:flex; align-items:center; gap:8px; font-size:12px; font-weight:400;"><input type="checkbox" class="portal-tipo-check" value="COMPROVANTE_PAGAMENTO" style="width:auto;"> Comprovante de pagamento</label>
+        <label style="display:flex; align-items:center; gap:8px; font-size:12px; font-weight:400;"><input type="checkbox" class="portal-tipo-check" value="OUTROS" style="width:auto;" onchange="document.getElementById('portal-outros-desc-${processoId}').style.display=this.checked?'block':'none'"> Outros</label>
+        <input type="text" id="portal-outros-desc-${processoId}" placeholder="Descreva o documento (ex: laudo de auditoria interna)" style="display:none; font-size:11.5px;">
+      </div>
+      <div style="display:flex; gap:8px; align-items:flex-end; margin-bottom:14px;">
+        <div style="flex:1;"><label style="font-size:10px; color:var(--textSecondary); display:block; margin-bottom:4px;">Prazo fatal da defesa</label><input type="date" id="portal-prazo-${processoId}"></div>
+        <button class="btn-secondary" style="width:auto; font-size:11.5px;" onclick="criarSolicitacaoEscritorio('${processoId}')">Solicitar</button>
+      </div>
+      <div style="font-size:11px; color:var(--textSecondary); margin-bottom:8px;">Histórico de solicitações</div>
+      <div id="portal-historico-${processoId}"></div>
+    </div>
+  `;
+  carregarHistoricoPortal(processoId);
+}
+
+async function criarSolicitacaoEscritorio(processoId){
+  const container = document.getElementById(`portal-detalhe-${processoId}`);
+  const marcados = [...container.querySelectorAll('.portal-tipo-check:checked')].map(c=>c.value);
+  const prazoFatal = document.getElementById(`portal-prazo-${processoId}`).value;
+  if(!marcados.length){ toast('Marque ao menos um tipo de documento.'); return; }
+  if(!prazoFatal){ toast('Informe o prazo fatal da defesa.'); return; }
+  const outrosDesc = document.getElementById(`portal-outros-desc-${processoId}`).value.trim();
+  if(marcados.includes('OUTROS') && !outrosDesc){ toast('Descreva o documento no campo "Outros".'); return; }
+
+  // Prazo interno da Konsi = prazo fatal informado pelo escritório menos 7 dias.
+  const prazoInterno = new Date(prazoFatal+'T00:00:00');
+  prazoInterno.setDate(prazoInterno.getDate() - 7);
+
+  const { data: novaSolicitacao, error } = await sb.from('solicitacoes_subsidio').insert({
+    processo_id: processoId,
+    prazo_fatal_escritorio: prazoFatal,
+    prazo_interno_konsi: prazoInterno.toISOString().slice(0,10),
+  }).select('id').single();
+  if(error){ toast('Erro: '+error.message); return; }
+
+  const itens = marcados.map(tipo=>({
+    solicitacao_id: novaSolicitacao.id,
+    processo_id: processoId,
+    tipo_documento: tipo,
+    descricao_outros: tipo==='OUTROS' ? outrosDesc : null,
+  }));
+  const { error: erroItens } = await sb.from('solicitacao_subsidio_itens').insert(itens);
+  if(erroItens){ toast('Erro ao salvar itens: '+erroItens.message); return; }
+
+  toast('Solicitação enviada.');
+  container.querySelectorAll('.portal-tipo-check').forEach(c=>c.checked=false);
+  document.getElementById(`portal-outros-desc-${processoId}`).value='';
+  document.getElementById(`portal-outros-desc-${processoId}`).style.display='none';
+  document.getElementById(`portal-prazo-${processoId}`).value='';
+  await carregarHistoricoPortal(processoId);
+}
+
+async function carregarHistoricoPortal(processoId){
+  const el = document.getElementById(`portal-historico-${processoId}`);
+  const { data: solicitacoes } = await sb.from('solicitacoes_subsidio')
+    .select('*, solicitacao_subsidio_itens(*)')
+    .eq('processo_id', processoId)
+    .order('criado_em', { ascending:false });
+  if(!solicitacoes?.length){ el.innerHTML = '<p class="field-note">Nenhuma solicitação ainda.</p>'; return; }
+  el.innerHTML = solicitacoes.map(s=>{
+    const itens = s.solicitacao_subsidio_itens || [];
+    return `<div style="padding:8px 0; border-bottom:1px solid var(--border);">
+      <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap;">
+        <span style="font-size:11.5px;">${itens.map(i=>LABEL_TIPO_SUBSIDIO[i.tipo_documento]||i.tipo_documento).join(', ')}</span>
+        <span class="badge ${s.status==='ATENDIDA'?'badge-BAIXO':'badge-ATRASADA'}">${s.status==='ATENDIDA'?'Atendida':'Aguardando'}</span>
+      </div>
+      <div style="font-size:10.5px; color:var(--textMuted); margin-top:3px;">Prazo fatal: ${fmtDate(s.prazo_fatal_escritorio)}</div>
+      ${itens.map(i=>renderItemPortalHistorico(i)).join('')}
+    </div>`;
+  }).join('');
+}
+
+function renderItemPortalHistorico(item){
+  const label = LABEL_TIPO_SUBSIDIO[item.tipo_documento] || item.tipo_documento;
+  if(item.status==='ANEXADO'){
+    return `<div style="font-size:10.5px; margin-top:4px; padding-left:8px; color:var(--sucesso);">${label} — <a href="javascript:void(0)" onclick="baixarDocumentoPortal('${item.storage_path}')" style="color:var(--konsiTeal);">baixar</a></div>`;
+  }
+  if(item.status==='NAO_LOCALIZADO'){
+    return `<div style="font-size:10.5px; margin-top:4px; padding-left:8px; color:var(--erro);">${label} — não localizado: "${item.motivo_nao_localizado||''}"</div>`;
+  }
+  return `<div style="font-size:10.5px; margin-top:4px; padding-left:8px; color:var(--textMuted);">${label} — aguardando</div>`;
+}
+
+async function baixarDocumentoPortal(storagePath){
+  const { data, error } = await sb.storage.from('subsidios').createSignedUrl(storagePath, 300);
+  if(error){ toast('Erro: '+error.message); return; }
+  window.open(data.signedUrl, '_blank');
+}
+
+// ---------------- SUBSÍDIOS (processos em que a Konsi é parte) ----------------
+const LABEL_TIPO_SUBSIDIO = {
+  CONTRATO: 'Contrato',
+  HISTORICO_CONVERSAS: 'Histórico de conversas',
+  COMPROVANTE_PAGAMENTO: 'Comprovante de pagamento',
+  OUTROS: 'Outros',
+};
+
+async function carregarSubsidiosProcesso(processoId){
+  const el = document.getElementById('det-subsidios');
+  const { data: solicitacoes, error } = await sb.from('solicitacoes_subsidio')
+    .select('*, solicitacao_subsidio_itens(*)')
+    .eq('processo_id', processoId)
+    .order('criado_em', { ascending: false });
+  if(error || !solicitacoes?.length){
+    el.innerHTML = emptyState('Nenhuma solicitação de subsídio ainda', 'Aparece aqui assim que o escritório contratado pedir algo pelo portal dele.');
+    return;
+  }
+  el.innerHTML = solicitacoes.map(s=>{
+    const itens = s.solicitacao_subsidio_itens || [];
+    const pendentes = itens.filter(i=>i.status==='PENDENTE').length;
+    const hoje = new Date().toISOString().slice(0,10);
+    const diasParaPrazo = diasEntre(hoje, s.prazo_interno_konsi);
+    return `
+    <div class="panel" style="${s.status==='ABERTA' ? 'border-color:var(--alerta); background:var(--alertaBg);' : 'opacity:.8;'} margin-bottom:10px;">
+      <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px; flex-wrap:wrap;">
+        <span style="font-size:11px; color:var(--textSecondary);">Solicitado pelo escritório em ${fmtDate(s.criado_em.slice(0,10))}</span>
+        <span class="badge ${s.status==='ATENDIDA'?'badge-BAIXO':'badge-ATRASADA'}">${s.status==='ATENDIDA' ? 'Atendida' : `${pendentes} pendente${pendentes===1?'':'s'}`}</span>
+      </div>
+      <div style="display:flex; gap:16px; margin:8px 0 12px; font-size:11px; flex-wrap:wrap;">
+        <div><span style="color:var(--textMuted);">Prazo fatal (escritório)</span><br><b>${fmtDate(s.prazo_fatal_escritorio)}</b></div>
+        <div><span style="color:var(--textMuted);">Prazo interno Konsi</span><br><b style="color:${diasParaPrazo!=null && diasParaPrazo<=3 ? 'var(--erro)':'inherit'};">${fmtDate(s.prazo_interno_konsi)}${diasParaPrazo!=null ? ` · ${diasParaPrazo>=0?'faltam '+diasParaPrazo+' dias':'venceu'}` : ''}</b></div>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:6px;">
+        ${itens.map(item=>renderItemSubsidio(item)).join('')}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function renderItemSubsidio(item){
+  const label = LABEL_TIPO_SUBSIDIO[item.tipo_documento] || item.tipo_documento;
+  const descricao = item.tipo_documento==='OUTROS' && item.descricao_outros ? ` — "${item.descricao_outros}"` : '';
+  if(item.status==='ANEXADO'){
+    return `<div class="panel" style="padding:8px 10px; background:var(--surfaceCardAlt);">
+      <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+        <span style="font-size:11.5px;">${label}${descricao}</span>
+        <button class="btn-ghost" style="font-size:10.5px;" onclick="baixarDocumentoSubsidio('${item.id}','${item.storage_path}')"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-1px; margin-right:3px;"><path d="M12 3v12m0 0 4-4m-4 4-4-4M4 19h16"/></svg>Baixar</button>
+      </div>
+      <div style="font-size:10px; color:var(--sucesso); margin-top:3px;">${item.nome_arquivo||''} · anexado</div>
+    </div>`;
+  }
+  if(item.status==='NAO_LOCALIZADO'){
+    return `<div class="panel" style="padding:8px 10px; background:var(--erroBg);">
+      <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+        <span style="font-size:11.5px;">${label}${descricao}</span>
+        <span style="font-size:10px; color:var(--erro);">Não localizado</span>
+      </div>
+      <div style="font-size:10px; color:var(--erro); margin-top:3px; font-style:italic;">"${item.motivo_nao_localizado||''}"</div>
+    </div>`;
+  }
+  return `<div class="panel" style="padding:8px 10px;">
+    <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap;">
+      <span style="font-size:11.5px;">${label}${descricao}</span>
+      <div style="display:flex; gap:6px;">
+        <button class="btn-secondary" style="width:auto; font-size:10.5px; padding:4px 10px;" onclick="acionarUploadSubsidio('${item.id}')">Anexar</button>
+        <button class="btn-ghost" style="font-size:10.5px; color:var(--erro);" onclick="abrirNaoLocalizadoSubsidio('${item.id}', this)">Não localizado</button>
+      </div>
+    </div>
+    <div id="nao-localizado-form-${item.id}" style="display:none; margin-top:8px;">
+      <textarea id="nao-localizado-motivo-${item.id}" rows="2" placeholder="Explique por que não foi encontrado" style="width:100%; font-size:11px;"></textarea>
+      <button class="btn-secondary" style="width:auto; font-size:10.5px; margin-top:6px;" onclick="confirmarNaoLocalizadoSubsidio('${item.id}')">Confirmar</button>
+    </div>
+  </div>`;
+}
+
+function abrirNaoLocalizadoSubsidio(itemId, btn){
+  document.getElementById(`nao-localizado-form-${itemId}`).style.display = 'block';
+}
+
+async function confirmarNaoLocalizadoSubsidio(itemId){
+  const motivo = document.getElementById(`nao-localizado-motivo-${itemId}`).value.trim();
+  if(!motivo){ toast('Explique o motivo antes de confirmar.'); return; }
+  const { error } = await sb.from('solicitacao_subsidio_itens')
+    .update({ status:'NAO_LOCALIZADO', motivo_nao_localizado: motivo, atualizado_por: currentUser.id, atualizado_em: new Date().toISOString() })
+    .eq('id', itemId);
+  if(error){ toast('Erro: '+error.message); return; }
+  toast('Marcado como não localizado.');
+  await carregarSubsidiosProcesso(processoAtualId);
+}
+
+function acionarUploadSubsidio(itemId){
+  window.__itemUploadAtual = itemId;
+  document.getElementById('input-arquivo-subsidio').click();
+}
+
+async function processarUploadSubsidio(event){
+  const arquivo = event.target.files[0];
+  event.target.value = ''; // permite selecionar o mesmo arquivo de novo depois, se precisar
+  if(!arquivo) return;
+  const itemId = window.__itemUploadAtual;
+  if(!itemId) return;
+  if(arquivo.size > 50*1024*1024){ toast('Arquivo maior que 50MB — o limite do plano atual é esse.'); return; }
+  toast('Enviando documento...');
+  const caminho = `${itemId}/${Date.now()}-${arquivo.name}`;
+  const { error: erroUpload } = await sb.storage.from('subsidios').upload(caminho, arquivo);
+  if(erroUpload){ toast('Erro ao enviar: '+erroUpload.message); return; }
+  const { error } = await sb.from('solicitacao_subsidio_itens')
+    .update({ status:'ANEXADO', storage_path: caminho, nome_arquivo: arquivo.name, atualizado_por: currentUser.id, atualizado_em: new Date().toISOString() })
+    .eq('id', itemId);
+  if(error){ toast('Erro ao salvar: '+error.message); return; }
+  toast('Documento anexado.');
+  await carregarSubsidiosProcesso(processoAtualId);
+}
+
+async function baixarDocumentoSubsidio(itemId, storagePath){
+  const { data, error } = await sb.storage.from('subsidios').createSignedUrl(storagePath, 300); // link válido por 5 minutos
+  if(error){ toast('Erro ao gerar link: '+error.message); return; }
+  window.open(data.signedUrl, '_blank');
+}
+
 async function carregarComunicacoesDjen(processoId){
   const el = document.getElementById('det-comunicacoes-djen');
   const { data, error } = await sb.from('comunicacoes_djen')
@@ -2743,6 +3041,7 @@ function openNovoProcesso(){
   document.getElementById('np-evidencias-possui').value = 'AGUARDANDO_CONTESTACAO';
   document.getElementById('np-evidencias-utilizada').value = 'NAO';
   document.getElementById('np-evidencias-utilizada-wrap').style.display = 'none';
+  document.getElementById('np-e-parte').checked = false;
 
   preencherSelectDominio('np-banco','BANCO');
   preencherSelectDominio('np-convenio','CONVENIO');
@@ -3085,6 +3384,7 @@ async function salvarNovoProcesso(){
     situacao_atual: document.getElementById('np-situacao').value.trim() || 'AGUARDANDO CITAÇÃO/CIÊNCIA',
     resumo_simples: document.getElementById('np-resumo-simples').value.trim() || null,
     situacao_evidencias: calcularSituacaoEvidencias('np'),
+    e_parte_no_processo: document.getElementById('np-e-parte').checked,
     origem_cadastro: 'MANUAL',
     responsavel_cadastro: currentUser.id
   };
@@ -3502,10 +3802,13 @@ async function abrirDetalhe(id){
   document.getElementById('tarefa-titulo').value = `Acompanhar processo ${p.numero_processo}`;
   document.getElementById('tarefa-responsavel').innerHTML = opcoesResponsavelHtml(currentUser.id);
 
+  document.getElementById('det-subsidios-wrap').style.display = p.e_parte_no_processo ? 'block' : 'none';
+
   await carregarTimeline(id);
   await carregarTarefasDoProcesso(id);
   await carregarLogEdicoesProcesso(id);
   await carregarComunicacoesDjen(id);
+  if(p.e_parte_no_processo) await carregarSubsidiosProcesso(id);
   openModal('modal-detalhe');
 }
 
@@ -3572,6 +3875,7 @@ function abrirEdicaoProcesso(){
   aplicarDestaqueCondenacao();
   preencherCampoEvidencias('det', p.situacao_evidencias || 'AGUARDANDO_CONTESTACAO');
   document.getElementById('det-resumo-simples').value = p.resumo_simples || '';
+  document.getElementById('det-e-parte').checked = !!p.e_parte_no_processo;
   document.getElementById('det-resultado').value = p.resultado || 'EM_ANDAMENTO';
   document.getElementById('det-status-processo').value = p.status_processo || 'ATIVO';
   window.__criterioRiscoPendente = null;
@@ -3611,6 +3915,7 @@ async function salvarAtualizacaoProcesso(){
     situacao_atual: document.getElementById('det-situacao').value.trim(),
     situacao_evidencias: calcularSituacaoEvidencias('det'),
     resumo_simples: document.getElementById('det-resumo-simples').value.trim() || null,
+    e_parte_no_processo: document.getElementById('det-e-parte').checked,
     resultado: document.getElementById('det-resultado').value,
     valor_condenacao: valorCondenacaoFinal,
     valor_dano_moral: danoMoral,
@@ -3763,6 +4068,7 @@ async function carregarUsuarios(){
       <tr>
         <td>${u.nome_exibicao}</td>
         <td>${u.email}</td>
+        <td>${u.tipo_usuario==='ESCRITORIO' ? '<span class="badge-robo">Escritório</span>' : 'Konsi'}</td>
         <td>${u.is_admin ? 'Sim' : 'Não'}</td>
         <td><span class="badge ${u.ativo && !u.banido ? 'badge-BAIXO' : 'badge-ATRASADA'}">${u.ativo && !u.banido ? 'Ativo' : 'Desativado'}</span></td>
         <td style="white-space:nowrap;">
@@ -3781,11 +4087,12 @@ async function criarUsuario(){
   const nome_exibicao = document.getElementById('nu-nome').value.trim();
   const email = document.getElementById('nu-email').value.trim();
   const is_admin = document.getElementById('nu-admin').checked;
+  const tipo_usuario = document.getElementById('nu-tipo').value;
   if(!nome_exibicao || !email){ toast('Preencha nome e e-mail.'); return; }
   try{
-    const { senha_provisoria } = await chamarAdminUsuarios({ action:'criar', email, nome_exibicao, is_admin });
+    const { senha_provisoria } = await chamarAdminUsuarios({ action:'criar', email, nome_exibicao, is_admin, tipo_usuario });
     closeModal('modal-novo-usuario');
-    document.getElementById('nu-nome').value=''; document.getElementById('nu-email').value=''; document.getElementById('nu-admin').checked=false;
+    document.getElementById('nu-nome').value=''; document.getElementById('nu-email').value=''; document.getElementById('nu-admin').checked=false; document.getElementById('nu-tipo').value='KONSI';
     alert(`Usuário criado.\nE-mail: ${email}\nSenha provisória: ${senha_provisoria}\n\nRepasse essa senha pra pessoa — ela pode trocar depois em "Esqueci minha senha".`);
     await carregarUsuarios();
   }catch(e){ toast('Erro: '+e.message); }
