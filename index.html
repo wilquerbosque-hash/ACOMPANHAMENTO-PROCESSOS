@@ -373,7 +373,7 @@
 <!-- ============ PORTAL DO ESCRITÓRIO (login externo) ============ -->
 <div id="portal-escritorio" style="display:none; min-height:100vh; background:var(--bgBlack); padding:20px;">
   <div style="max-width:680px; margin:0 auto;">
-    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; flex-wrap:wrap; gap:8px;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:8px;">
       <div style="display:flex; align-items:center; gap:8px;">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--konsiTeal)" stroke-width="2"><path d="m5 21 7-7 7 7M5 3h14M9 3v4m6-4v4M5 9h14v12H5z"/></svg>
         <h2 style="margin:0; font-size:16px; color:var(--textPrimary);">Portal do escritório</h2>
@@ -382,8 +382,59 @@
         <span id="portal-escritorio-nome"></span> · <a href="javascript:void(0)" onclick="doLogout()" style="color:var(--konsiTeal);">Sair</a>
       </div>
     </div>
-    <p style="font-size:12px; color:var(--textSecondary); margin:0 0 16px;">Processos em que a Konsi figura como parte. Clique num processo pra ver o histórico ou solicitar um documento novo.</p>
-    <div id="portal-escritorio-lista"></div>
+
+    <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:14px;">
+      <div class="cards-row" style="margin:0;">
+        <div class="kpi-card"><div><div class="label">Aguardando</div><div class="value" id="portal-kpi-aguardando">—</div></div></div>
+        <div class="kpi-card"><div><div class="label">Atendidas</div><div class="value" id="portal-kpi-atendidas">—</div></div></div>
+      </div>
+      <button class="btn-primary" style="width:auto;" onclick="abrirNovaSolicitacaoPortal()">+ Nova solicitação</button>
+    </div>
+
+    <input type="text" id="portal-filtro" placeholder="Buscar por número do processo ou nome do autor" oninput="filtrarDashboardPortal(this.value)" style="margin-bottom:14px;">
+
+    <div id="portal-lista-solicitacoes"></div>
+  </div>
+</div>
+
+<!-- ============ MODAL: NOVA SOLICITAÇÃO (portal do escritório) ============ -->
+<div class="modal-overlay" id="modal-portal-nova-solicitacao">
+  <div class="modal">
+    <div class="modal-head"><h3>Nova solicitação de subsídio</h3><button onclick="closeModal('modal-portal-nova-solicitacao')">✕</button></div>
+
+    <div class="form-row single">
+      <div>
+        <label>Número do processo (padrão CNJ — com ou sem pontuação)</label>
+        <div style="display:flex; gap:8px;">
+          <input type="text" id="portal-novo-numero" placeholder="0001234-56.2026.8.05.0001" onkeydown="if(event.key==='Enter'){event.preventDefault(); verificarProcessoPortal();}">
+          <button type="button" class="btn-secondary" style="width:auto; white-space:nowrap;" onclick="verificarProcessoPortal()">Verificar</button>
+        </div>
+        <div id="portal-novo-resultado" style="margin-top:8px;"></div>
+      </div>
+    </div>
+
+    <div id="portal-novo-form-checklist" style="display:none;">
+      <div class="form-row single">
+        <div>
+          <label style="font-size:11px; color:var(--textSecondary);">Quais documentos são necessários?</label>
+          <div style="display:flex; flex-direction:column; gap:8px; margin-top:6px;">
+            <label style="display:flex; align-items:center; gap:8px; font-weight:400;"><input type="checkbox" class="portal-tipo-check" value="CONTRATO" style="width:auto;"> Contrato</label>
+            <label style="display:flex; align-items:center; gap:8px; font-weight:400;"><input type="checkbox" class="portal-tipo-check" value="HISTORICO_CONVERSAS" style="width:auto;"> Histórico de conversas</label>
+            <label style="display:flex; align-items:center; gap:8px; font-weight:400;"><input type="checkbox" class="portal-tipo-check" value="COMPROVANTE_PAGAMENTO" style="width:auto;"> Comprovante de pagamento</label>
+            <label style="display:flex; align-items:center; gap:8px; font-weight:400;"><input type="checkbox" id="portal-check-outros" class="portal-tipo-check" value="OUTROS" style="width:auto;" onchange="document.getElementById('portal-outros-desc').style.display=this.checked?'block':'none'"> Outros</label>
+            <input type="text" id="portal-outros-desc" placeholder="Descreva o documento" style="display:none;">
+          </div>
+        </div>
+      </div>
+      <div class="form-row single">
+        <div><label>Prazo fatal da defesa</label><input type="date" id="portal-novo-prazo"></div>
+      </div>
+    </div>
+
+    <div class="form-actions">
+      <button class="btn-secondary" onclick="closeModal('modal-portal-nova-solicitacao')">Cancelar</button>
+      <button class="btn-primary" style="width:auto" id="portal-btn-solicitar" disabled onclick="criarSolicitacaoEscritorioV2()">Solicitar</button>
+    </div>
   </div>
 </div>
 
@@ -747,7 +798,7 @@
         </div>
         <div id="np-ade-lista" style="display:flex; gap:6px; flex-wrap:wrap; margin-top:8px;"></div>
       </div>
-      <div><label>Banco</label>
+      <div><label>Banco <span style="font-weight:400; color:var(--textMuted);">— opcional se "Konsi é parte" estiver marcado</span></label>
         <select id="np-banco" onchange="tratarNovoValorDominio('np-banco','BANCO')"></select>
       </div>
     </div>
@@ -767,6 +818,10 @@
           <button type="button" class="btn-secondary" style="width:auto; white-space:nowrap;" onclick="adicionarMotivoNovoProcesso()">Adicionar</button>
         </div>
         <div id="np-motivo-lista" style="display:flex; gap:6px; flex-wrap:wrap; margin-top:8px;"></div>
+        <div id="np-motivo-outro-wrap" style="display:none; margin-top:8px;">
+          <label style="font-size:11px;">Descreva o motivo "Outro"</label>
+          <textarea id="np-motivo-outro-desc" rows="2" placeholder="Ex: cobrança indevida de tarifa não contratada"></textarea>
+        </div>
       </div>
     </div>
     <div class="form-row single">
@@ -971,7 +1026,7 @@
             <div><label>Tribunal</label><input id="det-tribunal" placeholder="TJBA, TJSP, TRF1..."></div>
           </div>
           <div class="form-row">
-            <div><label>Banco</label><select id="det-banco" onchange="tratarNovoValorDominio('det-banco','BANCO')"></select></div>
+            <div><label>Banco <span style="font-weight:400; color:var(--textMuted);">— opcional se "Konsi é parte"</span></label><select id="det-banco" onchange="tratarNovoValorDominio('det-banco','BANCO')"></select></div>
             <div><label>Convênio</label><select id="det-convenio" onchange="tratarNovoValorDominio('det-convenio','CONVENIO')"></select></div>
           </div>
           <div class="form-row single">
@@ -985,6 +1040,10 @@
                 <button type="button" class="btn-secondary" style="width:auto; white-space:nowrap;" onclick="adicionarMotivoProcessoExistente()">Adicionar</button>
               </div>
               <div id="det-motivo-lista" style="display:flex; gap:6px; flex-wrap:wrap; margin-top:8px;"></div>
+              <div id="det-motivo-outro-wrap" style="display:none; margin-top:8px;">
+                <label style="font-size:11px;">Descreva o motivo "Outro"</label>
+                <textarea id="det-motivo-outro-desc" rows="2" placeholder="Ex: cobrança indevida de tarifa não contratada" onblur="salvarDescricaoOutroMotivo()"></textarea>
+              </div>
             </div>
           </div>
           <div class="form-row">
@@ -1425,6 +1484,18 @@ async function carregarProcessos(){
   renderTabelaProcessos();
 }
 
+// Processos em que a Konsi é parte (não só o banco parceiro) têm natureza
+// diferente — nem sempre têm banco vinculado, o motivo costuma ser outro
+// tipo de ação (comunicação indesejada, etc.), e misturar isso com a
+// análise de exposição de crédito consignado distorceria os dois. Por
+// isso, todo painel/gráfico GERAL (Dashboard, Compliance, "Últimos 15
+// dias", Exposição Consolidada, Condenações) usa essa lista em vez da
+// processosCache crua — só a aba Processos e a lista de tarefas continuam
+// mostrando todo mundo junto.
+function processosGerais(){
+  return processosCache.filter(p => !p.e_parte_no_processo);
+}
+
 function montarFiltros(){
   const bancos = [...new Set(processosCache.map(p=>p.banco).filter(Boolean))].sort();
   const selBanco = document.getElementById('f-banco');
@@ -1643,7 +1714,7 @@ function renderPainel15Dias(containerId){
   const corteStr = corte.toISOString().slice(0,10);
   const hojeStr = hoje.toISOString().slice(0,10);
 
-  const recentes = processosCache.filter(p => p.criado_em && p.criado_em.slice(0,10) >= corteStr && p.criado_em.slice(0,10) <= hojeStr);
+  const recentes = processosGerais().filter(p => p.criado_em && p.criado_em.slice(0,10) >= corteStr && p.criado_em.slice(0,10) <= hojeStr);
 
   if(!recentes.length){
     el.innerHTML = `<div class="panel" style="border-color:var(--konsiTeal); margin-bottom:20px;">
@@ -1799,7 +1870,7 @@ function renderPainel15Dias(containerId){
 
 async function carregarDashboard(){
   renderPainel15Dias('painel-15d-dashboard');
-  const ativos = processosCache.filter(p=>(p.status_processo||'ATIVO')==='ATIVO');
+  const ativos = processosGerais().filter(p=>(p.status_processo||'ATIVO')==='ATIVO');
   const total = ativos.length;
   const valorTotal = ativos.reduce((s,p)=>s+(Number(p.valor_risco)||0),0);
   const criticos = ativos.filter(p=>['ALTO','CRITICO'].includes(p.classificacao_risco)).length;
@@ -1817,9 +1888,9 @@ async function carregarDashboard(){
     : null;
 
   // % de êxito considera todos os processos concluídos, mesmo os já arquivados
-  const ganhos = processosCache.filter(p=>p.resultado==='GANHO').length;
-  const perdidos = processosCache.filter(p=>p.resultado==='PERDIDO').length;
-  const parciais = processosCache.filter(p=>p.resultado==='PARCIAL').length;
+  const ganhos = processosGerais().filter(p=>p.resultado==='GANHO').length;
+  const perdidos = processosGerais().filter(p=>p.resultado==='PERDIDO').length;
+  const parciais = processosGerais().filter(p=>p.resultado==='PARCIAL').length;
   const concluidos = ganhos + perdidos + parciais;
   const exitoPct = concluidos ? Math.round(ganhos/concluidos*100) : null;
 
@@ -1854,14 +1925,14 @@ async function carregarDashboard(){
     (item)=> abrirDrilldown('classificacao_risco', item.label, 'banco', 'Banco', ativos));
 
   const porMotivo = {};
-  processosCache.forEach(p=>{
+  processosGerais().forEach(p=>{
     (p.todosMotivos&&p.todosMotivos.length ? p.todosMotivos : [p.motivo]).forEach(m=>{
       if(m) porMotivo[m]=(porMotivo[m]||0)+1;
     });
   });
   renderPieChart(document.getElementById('chart-por-motivo'),
     Object.entries(porMotivo).sort((a,b)=>b[1]-a[1]).map(([m,n])=>({label:m, n})), null, 'processos',
-    (item)=> abrirDrilldown('motivo', item.label, 'banco', 'Banco', processosCache));
+    (item)=> abrirDrilldown('motivo', item.label, 'banco', 'Banco', processosGerais()));
 
   // popula selects de filtro de motivo/risco
   document.getElementById('f-motivo').innerHTML = '<option value="">Todos os motivos</option>' + [...new Set(processosCache.flatMap(p=>p.todosMotivos||[]))].sort().map(m=>`<option value="${m}">${m}</option>`).join('');
@@ -1999,7 +2070,7 @@ function toggleMiniCohort(rowEl, mesOperacao){
   if(slot.innerHTML){ slot.innerHTML = ''; return; }
   document.querySelectorAll('.mini-cohort-slot').forEach(s=>s.innerHTML='');
 
-  const doMes = processosCache.filter(p=>p.data_operacao && p.data_ajuizamento && p.data_operacao.slice(0,7)===mesOperacao);
+  const doMes = processosGerais().filter(p=>p.data_operacao && p.data_ajuizamento && p.data_operacao.slice(0,7)===mesOperacao);
   const porOperacao = calcularCohortPorCampo(doMes, 'tipo_operacao');
   const porMotivo = calcularCohortPorCampo(doMes, 'motivo');
 
@@ -2026,7 +2097,7 @@ function toggleGraficoCompletoCohort(rowEl, mesOperacao){
   if(slot.innerHTML){ slot.innerHTML = ''; return; }
   document.querySelectorAll('.full-cohort-slot').forEach(s=>s.innerHTML='');
 
-  const doMes = processosCache.filter(p=>p.data_operacao && p.data_ajuizamento && p.data_operacao.slice(0,7)===mesOperacao);
+  const doMes = processosGerais().filter(p=>p.data_operacao && p.data_ajuizamento && p.data_operacao.slice(0,7)===mesOperacao);
   const porMotivo = calcularCohortPorCampo(doMes, 'motivo').map(x=>({label:x.label, n:x.n}));
   const porOperacao = calcularCohortPorCampo(doMes, 'tipo_operacao').map(x=>({label:x.label, n:x.n}));
 
@@ -2055,7 +2126,7 @@ function abrirDrilldown(campoFiltro, valorFiltro, campoAgrupar, labelAgrupar, ba
   const matchCampo = (p, campo, valor) =>
     campo === 'motivo' ? (p.todosMotivos||[]).includes(valor) : (p[campo] || '(sem informação)') === valor;
 
-  const filtrados = (base||processosCache).filter(p => matchCampo(p, campoFiltro, valorFiltro));
+  const filtrados = (base||processosGerais()).filter(p => matchCampo(p, campoFiltro, valorFiltro));
   const grupos = {};
   filtrados.forEach(p=>{
     const chaves = campoAgrupar === 'motivo'
@@ -2131,7 +2202,7 @@ async function carregarCompliance(){
   carregarExposicaoConsolidada();
   carregarLogAuditoriaRisco();
   renderPainelCondenacoes();
-  const ativos = processosCache.filter(p=>(p.status_processo||'ATIVO')==='ATIVO');
+  const ativos = processosGerais().filter(p=>(p.status_processo||'ATIVO')==='ATIVO');
   const total = ativos.length;
   const valorTotalRisco = ativos.reduce((s,p)=>s+(Number(p.valor_risco)||0),0);
   const criticos = ativos.filter(p=>['ALTO','CRITICO'].includes(p.classificacao_risco)).length;
@@ -2448,7 +2519,7 @@ function renderPainelCondenacoes(){
   // indenização por dano moral/material — misturar os dois tipos de valor
   // na mesma média distorce o número. A ideia aqui é medir ações
   // indenizatórias convencionais.
-  const comCondenacao = processosCache.filter(p =>
+  const comCondenacao = processosGerais().filter(p =>
     p.valor_condenacao != null &&
     !((p.todosMotivos && p.todosMotivos.length ? p.todosMotivos : [p.motivo]).includes('REVISIONAL'))
   );
@@ -2514,7 +2585,7 @@ function renderPainelCondenacoes(){
 }
 
 function exportarComplianceCsv(){
-  const ativos = processosCache.filter(p=>(p.status_processo||'ATIVO')==='ATIVO');
+  const ativos = processosGerais().filter(p=>(p.status_processo||'ATIVO')==='ATIVO');
   const cabecalho = ['numero_processo','tribunal','banco','convenio','tipo_operacao','motivo','classificacao_risco','valor_risco','situacao_evidencias','situacao_atual','data_ajuizamento'];
   const linhas = ativos.map(p=> cabecalho.map(c=> {
     const v = p[c];
@@ -2530,66 +2601,117 @@ function exportarComplianceCsv(){
 }
 
 // ---------------- PORTAL DO ESCRITÓRIO (login externo) ----------------
+// Não lista mais os processos em aberto de cara (reduz exposição) — o
+// advogado precisa saber/digitar o número do processo pra abrir uma
+// solicitação nova, e só a partir daí esse processo passa a aparecer no
+// dashboard dele. Isso é seguro fazer no navegador, sem outra chamada ao
+// banco: já carregamos essa lista estreita (vw_processos_escritorio) uma
+// vez no login, só com os campos liberados pro escritório, e comparamos
+// localmente — a real trava de segurança continua sendo o RLS do banco.
 async function carregarPortalEscritorio(){
-  const { data: processos, error } = await sb.from('vw_processos_escritorio').select('*').order('numero_processo');
-  const el = document.getElementById('portal-escritorio-lista');
-  if(error || !processos?.length){
-    el.innerHTML = emptyState('Nenhum processo disponível ainda', 'Assim que um processo for marcado como "Konsi é parte", ele aparece aqui.');
+  const { data: processos } = await sb.from('vw_processos_escritorio').select('*');
+  window.__mapaProcessosEscritorio = Object.fromEntries((processos||[]).map(p=>[p.id, p]));
+  await carregarDashboardPortal();
+}
+
+async function carregarDashboardPortal(){
+  const { data: solicitacoes, error } = await sb.from('solicitacoes_subsidio')
+    .select('*, solicitacao_subsidio_itens(*)')
+    .order('criado_em', { ascending:false });
+  window.__solicitacoesPortalCache = (solicitacoes||[]).map(s=>({
+    ...s, processoInfo: (window.__mapaProcessosEscritorio||{})[s.processo_id] || {}
+  }));
+  if(error){ toast('Erro ao carregar: '+error.message); return; }
+  renderDashboardPortal(window.__solicitacoesPortalCache);
+}
+
+function filtrarDashboardPortal(termo){
+  const t = termo.trim().toLowerCase();
+  const tNumeros = termo.replace(/\D/g,'');
+  const lista = (window.__solicitacoesPortalCache||[]).filter(s=>{
+    if(!t) return true;
+    const numeroBate = tNumeros && (s.processoInfo.numero_processo||'').replace(/\D/g,'').includes(tNumeros);
+    const nomeBate = (s.processoInfo.nome_cliente||'').toLowerCase().includes(t);
+    return numeroBate || nomeBate;
+  });
+  renderDashboardPortal(lista);
+}
+
+function renderDashboardPortal(lista){
+  const todas = window.__solicitacoesPortalCache || [];
+  document.getElementById('portal-kpi-aguardando').textContent = todas.filter(s=>s.status==='ABERTA').length;
+  document.getElementById('portal-kpi-atendidas').textContent = todas.filter(s=>s.status==='ATENDIDA').length;
+
+  const el = document.getElementById('portal-lista-solicitacoes');
+  if(!lista.length){
+    el.innerHTML = emptyState('Nenhuma solicitação ainda', 'Clique em "+ Nova solicitação" e informe o número do processo pra começar.');
     return;
   }
-  el.innerHTML = processos.map(p=>`
-    <div class="panel" style="margin-bottom:10px; cursor:pointer;" onclick="togglePortalProcesso('${p.id}')">
-      <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">
-        <div><b style="font-size:12.5px;">${p.numero_processo}</b><br><span style="font-size:11px; color:var(--textSecondary);">${p.nome_cliente||''} · ${p.banco||''}</span></div>
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+  el.innerHTML = lista.map(s=>{
+    const itens = s.solicitacao_subsidio_itens || [];
+    return `<div class="panel" style="margin-bottom:10px;">
+      <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px; flex-wrap:wrap;">
+        <div>
+          <b style="font-size:12.5px;">${s.processoInfo.numero_processo || '(processo)'}</b><br>
+          <span style="font-size:11px; color:var(--textSecondary);">${s.processoInfo.nome_cliente||''}</span>
+        </div>
+        <span class="badge ${s.status==='ATENDIDA'?'badge-BAIXO':'badge-ATRASADA'}">${s.status==='ATENDIDA'?'Atendida':'Aguardando'}</span>
       </div>
-      <div id="portal-detalhe-${p.id}" style="display:none; margin-top:14px;" onclick="event.stopPropagation()"></div>
-    </div>
-  `).join('');
+      <div style="font-size:10.5px; color:var(--textMuted); margin:8px 0;">Prazo fatal: ${fmtDate(s.prazo_fatal_escritorio)} · Solicitado em ${fmtDate(s.criado_em.slice(0,10))}</div>
+      <div>${itens.map(i=>renderItemPortalHistorico(i)).join('')}</div>
+    </div>`;
+  }).join('');
 }
 
-function togglePortalProcesso(processoId){
-  const detalhe = document.getElementById(`portal-detalhe-${processoId}`);
-  const abrindo = detalhe.style.display === 'none';
-  detalhe.style.display = abrindo ? 'block' : 'none';
-  if(abrindo && !detalhe.dataset.carregado){
-    detalhe.dataset.carregado = '1';
-    renderPortalDetalheProcesso(processoId, detalhe);
+function abrirNovaSolicitacaoPortal(){
+  document.getElementById('portal-novo-numero').value = '';
+  document.getElementById('portal-novo-resultado').innerHTML = '';
+  document.getElementById('portal-novo-form-checklist').style.display = 'none';
+  document.getElementById('portal-btn-solicitar').disabled = true;
+  document.querySelectorAll('.portal-tipo-check').forEach(c=>c.checked=false);
+  document.getElementById('portal-outros-desc').value = '';
+  document.getElementById('portal-outros-desc').style.display = 'none';
+  document.getElementById('portal-novo-prazo').value = '';
+  window.__processoVerificadoPortal = null;
+  openModal('modal-portal-nova-solicitacao');
+}
+
+function verificarProcessoPortal(){
+  const digitado = document.getElementById('portal-novo-numero').value.trim();
+  const normalizado = digitado.replace(/\D/g,'');
+  const resultadoEl = document.getElementById('portal-novo-resultado');
+  const formEl = document.getElementById('portal-novo-form-checklist');
+  const btnEl = document.getElementById('portal-btn-solicitar');
+
+  if(!normalizado){ toast('Digite o número do processo.'); return; }
+
+  const encontrado = Object.values(window.__mapaProcessosEscritorio||{})
+    .find(p => (p.numero_processo||'').replace(/\D/g,'') === normalizado);
+
+  if(!encontrado){
+    resultadoEl.innerHTML = '<p style="font-size:11.5px; color:var(--erro); margin:0;">Processo não encontrado, ou a Konsi ainda não consta como parte nele — confira o número ou entre em contato.</p>';
+    formEl.style.display = 'none';
+    btnEl.disabled = true;
+    window.__processoVerificadoPortal = null;
+    return;
   }
+  window.__processoVerificadoPortal = encontrado.id;
+  resultadoEl.innerHTML = `<p style="font-size:11.5px; color:var(--sucesso); margin:0;">✓ ${encontrado.numero_processo} — ${encontrado.nome_cliente||''}</p>`;
+  formEl.style.display = 'block';
+  btnEl.disabled = false;
 }
 
-function renderPortalDetalheProcesso(processoId, container){
-  container.innerHTML = `
-    <div style="border-top:1px solid var(--border); padding-top:12px;">
-      <div style="font-size:11.5px; font-weight:600; margin-bottom:8px;">Nova solicitação de subsídio</div>
-      <div style="display:flex; flex-direction:column; gap:8px; margin-bottom:10px;">
-        <label style="display:flex; align-items:center; gap:8px; font-size:12px; font-weight:400;"><input type="checkbox" class="portal-tipo-check" value="CONTRATO" style="width:auto;"> Contrato</label>
-        <label style="display:flex; align-items:center; gap:8px; font-size:12px; font-weight:400;"><input type="checkbox" class="portal-tipo-check" value="HISTORICO_CONVERSAS" style="width:auto;"> Histórico de conversas</label>
-        <label style="display:flex; align-items:center; gap:8px; font-size:12px; font-weight:400;"><input type="checkbox" class="portal-tipo-check" value="COMPROVANTE_PAGAMENTO" style="width:auto;"> Comprovante de pagamento</label>
-        <label style="display:flex; align-items:center; gap:8px; font-size:12px; font-weight:400;"><input type="checkbox" class="portal-tipo-check" value="OUTROS" style="width:auto;" onchange="document.getElementById('portal-outros-desc-${processoId}').style.display=this.checked?'block':'none'"> Outros</label>
-        <input type="text" id="portal-outros-desc-${processoId}" placeholder="Descreva o documento (ex: laudo de auditoria interna)" style="display:none; font-size:11.5px;">
-      </div>
-      <div style="display:flex; gap:8px; align-items:flex-end; margin-bottom:14px;">
-        <div style="flex:1;"><label style="font-size:10px; color:var(--textSecondary); display:block; margin-bottom:4px;">Prazo fatal da defesa</label><input type="date" id="portal-prazo-${processoId}"></div>
-        <button class="btn-secondary" style="width:auto; font-size:11.5px;" onclick="criarSolicitacaoEscritorio('${processoId}')">Solicitar</button>
-      </div>
-      <div style="font-size:11px; color:var(--textSecondary); margin-bottom:8px;">Histórico de solicitações</div>
-      <div id="portal-historico-${processoId}"></div>
-    </div>
-  `;
-  carregarHistoricoPortal(processoId);
-}
+async function criarSolicitacaoEscritorioV2(){
+  const processoId = window.__processoVerificadoPortal;
+  if(!processoId){ toast('Verifique o número do processo antes de solicitar.'); return; }
 
-async function criarSolicitacaoEscritorio(processoId){
-  const container = document.getElementById(`portal-detalhe-${processoId}`);
-  const marcados = [...container.querySelectorAll('.portal-tipo-check:checked')].map(c=>c.value);
-  const prazoFatal = document.getElementById(`portal-prazo-${processoId}`).value;
+  const marcados = [...document.querySelectorAll('.portal-tipo-check:checked')].map(c=>c.value);
+  const prazoFatal = document.getElementById('portal-novo-prazo').value;
   if(!marcados.length){ toast('Marque ao menos um tipo de documento.'); return; }
   if(!prazoFatal){ toast('Informe o prazo fatal da defesa.'); return; }
-  const outrosDesc = document.getElementById(`portal-outros-desc-${processoId}`).value.trim();
+  const outrosDesc = document.getElementById('portal-outros-desc').value.trim();
   if(marcados.includes('OUTROS') && !outrosDesc){ toast('Descreva o documento no campo "Outros".'); return; }
 
-  // Prazo interno da Konsi = prazo fatal informado pelo escritório menos 7 dias.
   const prazoInterno = new Date(prazoFatal+'T00:00:00');
   prazoInterno.setDate(prazoInterno.getDate() - 7);
 
@@ -2610,42 +2732,19 @@ async function criarSolicitacaoEscritorio(processoId){
   if(erroItens){ toast('Erro ao salvar itens: '+erroItens.message); return; }
 
   toast('Solicitação enviada.');
-  container.querySelectorAll('.portal-tipo-check').forEach(c=>c.checked=false);
-  document.getElementById(`portal-outros-desc-${processoId}`).value='';
-  document.getElementById(`portal-outros-desc-${processoId}`).style.display='none';
-  document.getElementById(`portal-prazo-${processoId}`).value='';
-  await carregarHistoricoPortal(processoId);
-}
-
-async function carregarHistoricoPortal(processoId){
-  const el = document.getElementById(`portal-historico-${processoId}`);
-  const { data: solicitacoes } = await sb.from('solicitacoes_subsidio')
-    .select('*, solicitacao_subsidio_itens(*)')
-    .eq('processo_id', processoId)
-    .order('criado_em', { ascending:false });
-  if(!solicitacoes?.length){ el.innerHTML = '<p class="field-note">Nenhuma solicitação ainda.</p>'; return; }
-  el.innerHTML = solicitacoes.map(s=>{
-    const itens = s.solicitacao_subsidio_itens || [];
-    return `<div style="padding:8px 0; border-bottom:1px solid var(--border);">
-      <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap;">
-        <span style="font-size:11.5px;">${itens.map(i=>LABEL_TIPO_SUBSIDIO[i.tipo_documento]||i.tipo_documento).join(', ')}</span>
-        <span class="badge ${s.status==='ATENDIDA'?'badge-BAIXO':'badge-ATRASADA'}">${s.status==='ATENDIDA'?'Atendida':'Aguardando'}</span>
-      </div>
-      <div style="font-size:10.5px; color:var(--textMuted); margin-top:3px;">Prazo fatal: ${fmtDate(s.prazo_fatal_escritorio)}</div>
-      ${itens.map(i=>renderItemPortalHistorico(i)).join('')}
-    </div>`;
-  }).join('');
+  closeModal('modal-portal-nova-solicitacao');
+  await carregarDashboardPortal();
 }
 
 function renderItemPortalHistorico(item){
   const label = LABEL_TIPO_SUBSIDIO[item.tipo_documento] || item.tipo_documento;
   if(item.status==='ANEXADO'){
-    return `<div style="font-size:10.5px; margin-top:4px; padding-left:8px; color:var(--sucesso);">${label} — <a href="javascript:void(0)" onclick="baixarDocumentoPortal('${item.storage_path}')" style="color:var(--konsiTeal);">baixar</a></div>`;
+    return `<div style="font-size:10.5px; margin-top:4px; padding-left:2px; color:var(--sucesso);">${label} — <a href="javascript:void(0)" onclick="baixarDocumentoPortal('${item.storage_path}')" style="color:var(--konsiTeal);">baixar</a></div>`;
   }
   if(item.status==='NAO_LOCALIZADO'){
-    return `<div style="font-size:10.5px; margin-top:4px; padding-left:8px; color:var(--erro);">${label} — não localizado: "${item.motivo_nao_localizado||''}"</div>`;
+    return `<div style="font-size:10.5px; margin-top:4px; padding-left:2px; color:var(--erro);">${label} — não localizado: "${item.motivo_nao_localizado||''}"</div>`;
   }
-  return `<div style="font-size:10.5px; margin-top:4px; padding-left:8px; color:var(--textMuted);">${label} — aguardando</div>`;
+  return `<div style="font-size:10.5px; margin-top:4px; padding-left:2px; color:var(--textMuted);">${label} — aguardando</div>`;
 }
 
 async function baixarDocumentoPortal(storagePath){
@@ -3035,7 +3134,7 @@ function openNovoProcesso(){
   // Limpa todo campo de texto/data/número/textarea do formulário — sem isso,
   // o navegador mantém o que foi digitado no cadastro anterior.
   ['np-numero','np-tribunal','np-nome','np-ade-novo','np-valor-operacao','np-data-operacao',
-   'np-data-ajuizamento','np-valor-risco','np-resumo-simples'].forEach(id=>{
+   'np-data-ajuizamento','np-valor-risco','np-resumo-simples','np-motivo-outro-desc'].forEach(id=>{
     document.getElementById(id).value = '';
   });
   document.getElementById('np-evidencias-possui').value = 'AGUARDANDO_CONTESTACAO';
@@ -3205,6 +3304,7 @@ function renderListaMotivosNovoProcesso(){
   el.innerHTML = (window.__motivosNovoProcesso||[]).map((m,i)=>`
     <span class="badge-robo" style="cursor:default;">${m} <a href="javascript:void(0)" onclick="removerMotivoNovoProcesso(${i})" style="color:inherit; margin-left:4px; text-decoration:none;" title="Remover">✕</a></span>
   `).join('') || '<span class="field-note">Nenhum motivo adicionado ainda.</span>';
+  document.getElementById('np-motivo-outro-wrap').style.display = (window.__motivosNovoProcesso||[]).includes('OUTRO') ? 'block' : 'none';
   aplicarRegraSuperendividamento('np');
 }
 function adicionarMotivoNovoProcesso(){
@@ -3226,14 +3326,27 @@ function removerMotivoNovoProcesso(i){
 // pra alimentar as regras (Superendividamento, dano moral/material) sem
 // precisar reconsultar o banco toda hora.
 async function carregarMotivosProcessoExistente(processoId){
-  const { data } = await sb.from('processo_motivos').select('id, motivo').eq('processo_id', processoId).order('motivo');
+  const { data } = await sb.from('processo_motivos').select('id, motivo, descricao_outro').eq('processo_id', processoId).order('motivo');
   window.__motivosProcessoAtual = (data||[]).map(m=>m.motivo);
   const el = document.getElementById('det-motivo-lista');
   el.innerHTML = (data||[]).map(m=>`
     <span class="badge-robo" style="cursor:default;">${m.motivo} <a href="javascript:void(0)" onclick="removerMotivoProcessoExistente('${m.id}','${processoId}')" style="color:inherit; margin-left:4px; text-decoration:none;" title="Remover">✕</a></span>
   `).join('') || '<span class="field-note">Nenhum motivo cadastrado ainda.</span>';
+
+  const itemOutro = (data||[]).find(m=>m.motivo==='OUTRO');
+  document.getElementById('det-motivo-outro-wrap').style.display = itemOutro ? 'block' : 'none';
+  if(itemOutro){
+    window.__idMotivoOutroAtual = itemOutro.id;
+    document.getElementById('det-motivo-outro-desc').value = itemOutro.descricao_outro || '';
+  }
+
   aplicarRegraSuperendividamento('det');
   aplicarDestaqueCondenacao();
+}
+async function salvarDescricaoOutroMotivo(){
+  if(!window.__idMotivoOutroAtual) return;
+  const desc = document.getElementById('det-motivo-outro-desc').value.trim();
+  await sb.from('processo_motivos').update({ descricao_outro: desc }).eq('id', window.__idMotivoOutroAtual);
 }
 async function adicionarMotivoProcessoExistente(){
   const select = document.getElementById('det-motivo-select');
@@ -3388,8 +3501,11 @@ async function salvarNovoProcesso(){
     origem_cadastro: 'MANUAL',
     responsavel_cadastro: currentUser.id
   };
-  if(!payload.numero_processo || !payload.nome_cliente || !payload.banco){
-    toast('Preencha ao menos número do processo, nome do cliente e banco.'); return;
+  if(!payload.numero_processo || !payload.nome_cliente){
+    toast('Preencha ao menos número do processo e nome do cliente.'); return;
+  }
+  if(!payload.banco && !payload.e_parte_no_processo){
+    toast('Preencha o banco — ou marque "Konsi é parte", se essa ação não tiver banco parceiro vinculado.'); return;
   }
   if(!payload.tribunal){
     toast('Preencha o tribunal — sem ele, o sistema não consegue buscar os dados do processo no DataJud automaticamente.'); return;
@@ -3404,7 +3520,11 @@ async function salvarNovoProcesso(){
   if(ades.length){
     await sb.from('processo_ades').insert(ades.map(ade=>({ processo_id: novoProcesso.id, ade })));
   }
-  await sb.from('processo_motivos').insert(motivos.map(motivo=>({ processo_id: novoProcesso.id, motivo })));
+  const descricaoOutro = document.getElementById('np-motivo-outro-desc').value.trim() || null;
+  await sb.from('processo_motivos').insert(motivos.map(motivo=>({
+    processo_id: novoProcesso.id, motivo,
+    descricao_outro: motivo==='OUTRO' ? descricaoOutro : null,
+  })));
 
   toast('Processo cadastrado. Consultando o DataJud...');
   closeModal('modal-novo-processo');
