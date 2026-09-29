@@ -142,6 +142,23 @@ async function verificarAlertaMotivo(admin: any) {
 
 // Avisa sobre tarefas que passaram do prazo e ainda não foram notificadas —
 // marca notificado_atraso_slack_em pra nunca avisar a mesma tarefa duas vezes.
+// Avisa quando o escritório pede subsídio de um processo que ainda não
+// existe no sistema — vira um pedido de cadastro aguardando aprovação.
+// Notifica uma vez só por pedido (notificado_slack_cadastro_em).
+async function verificarSolicitacoesAguardandoCadastro(admin: any) {
+  const { data: pendentes } = await admin
+    .from("solicitacoes_subsidio")
+    .select("id, numero_processo_informado, nome_autor_informado")
+    .eq("status", "AGUARDANDO_CADASTRO")
+    .is("notificado_slack_cadastro_em", null)
+    .limit(20);
+
+  for (const s of pendentes || []) {
+    await notificarSlack(`🆕 O escritório solicitou o cadastro de uma ação nova — processo *${s.numero_processo_informado || "(não informado)"}*, autor *${s.nome_autor_informado || "(não informado)"}*. Acesse o sistema pra revisar e aprovar o cadastro.`);
+    await admin.from("solicitacoes_subsidio").update({ notificado_slack_cadastro_em: new Date().toISOString() }).eq("id", s.id);
+  }
+}
+
 async function verificarTarefasAtrasadas(admin: any) {
   const hojeStr = new Date().toISOString().slice(0, 10);
   const { data: atrasadas } = await admin
@@ -314,6 +331,7 @@ Deno.serve(async (req) => {
     // agendamento próprio, aproveita o mesmo ciclo do sync-djen.
     await verificarAlertaMotivo(admin);
     await verificarTarefasAtrasadas(admin);
+    await verificarSolicitacoesAguardandoCadastro(admin);
 
     return new Response(JSON.stringify(resultado), { status: 200 });
   } catch (e) {
