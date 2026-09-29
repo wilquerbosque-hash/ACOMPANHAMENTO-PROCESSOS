@@ -704,6 +704,11 @@
         <select id="f-tribunal"><option value="">Todos os tribunais</option></select>
         <select id="f-motivo"><option value="">Todos os motivos</option></select>
         <select id="f-risco"><option value="">Todos os riscos</option></select>
+        <select id="f-e-parte">
+          <option value="">Todos (parte ou não)</option>
+          <option value="SIM">Só em que somos parte</option>
+          <option value="NAO">Só em que NÃO somos parte</option>
+        </select>
         <select id="f-status-processo">
           <option value="">Ativos e arquivados</option>
           <option value="ATIVO" selected>Só ativos</option>
@@ -1524,7 +1529,7 @@ function montarFiltros(){
   const selTribunal = document.getElementById('f-tribunal');
   selTribunal.innerHTML = '<option value="">Todos os tribunais</option>' + tribunais.map(t=>`<option>${t}</option>`).join('');
 
-  ['f-banco','f-tribunal','f-motivo','f-risco','f-busca','f-ajuizamento-de','f-ajuizamento-ate','f-status-processo','f-origem-cadastro','f-evidencias','f-cadastro-de','f-cadastro-ate'].forEach(id=>{
+  ['f-banco','f-tribunal','f-motivo','f-risco','f-e-parte','f-busca','f-ajuizamento-de','f-ajuizamento-ate','f-status-processo','f-origem-cadastro','f-evidencias','f-cadastro-de','f-cadastro-ate'].forEach(id=>{
     document.getElementById(id).oninput = ()=>{ paginaProcessosAtual = 1; renderTabelaProcessos(); };
   });
   document.getElementById('pag-processos-tamanho').onchange = ()=>{ paginaProcessosAtual = 1; renderTabelaProcessos(); };
@@ -1535,6 +1540,7 @@ function limparTodosFiltros(){
   document.getElementById('f-tribunal').value = '';
   document.getElementById('f-motivo').value = '';
   document.getElementById('f-risco').value = '';
+  document.getElementById('f-e-parte').value = '';
   document.getElementById('f-status-processo').value = 'ATIVO';
   document.getElementById('f-origem-cadastro').value = '';
   document.getElementById('f-evidencias').value = '';
@@ -1552,6 +1558,7 @@ function renderTabelaProcessos(){
   const tribunal = document.getElementById('f-tribunal').value;
   const motivo = document.getElementById('f-motivo').value;
   const risco = document.getElementById('f-risco').value;
+  const eParte = document.getElementById('f-e-parte').value;
   const busca = document.getElementById('f-busca').value.toLowerCase();
   const ajuizDe = document.getElementById('f-ajuizamento-de').value;
   const ajuizAte = document.getElementById('f-ajuizamento-ate').value;
@@ -1566,6 +1573,7 @@ function renderTabelaProcessos(){
     (!tribunal || p.tribunal===tribunal) &&
     (!motivo || (p.todosMotivos||[]).includes(motivo)) &&
     (!risco || p.classificacao_risco===risco) &&
+    (!eParte || (eParte==='SIM' ? !!p.e_parte_no_processo : !p.e_parte_no_processo)) &&
     (!statusProc || (p.status_processo||'ATIVO')===statusProc) &&
     (!origemCadastro || (p.origem_cadastro||'MANUAL')===origemCadastro) &&
     (!evidencias || (p.situacao_evidencias||'AGUARDANDO_CONTESTACAO')===evidencias) &&
@@ -1585,7 +1593,7 @@ function renderTabelaProcessos(){
 
   tbody.innerHTML = pagina.length ? pagina.map(p=>`
     <tr class="clickable" onclick="abrirDetalhe('${p.id}')">
-      <td class="truncate" data-label="Processo" title="${p.numero_processo}">${p.numero_processo}</td>
+      <td class="truncate" data-label="Processo" title="${p.numero_processo}">${p.numero_processo}${p.e_parte_no_processo ? ' <span class="badge-robo" title="Konsi é parte neste processo">Parte</span>' : ''}</td>
       <td class="truncate" data-label="Cliente" title="${p.nome_cliente}">${p.nome_cliente}</td>
       <td data-label="Banco">${p.banco}</td>
       <td data-label="Convênio">${p.convenio||'—'}</td>
