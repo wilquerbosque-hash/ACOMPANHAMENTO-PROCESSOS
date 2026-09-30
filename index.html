@@ -274,6 +274,8 @@
   .cohort-tab.active{ background:var(--konsiTeal); color:#08130F; border-color:var(--konsiTeal); }
   .bar-row.expandable{ cursor:pointer; border-radius:6px; transition:background .15s; }
   .bar-row.expandable:hover{ background:#1F1D19; }
+  tr.expandable{ cursor:pointer; }
+  tr.expandable:hover{ background:#1F1D19; }
   .mini-cohort-box{ display:grid; grid-template-columns:1fr 1fr; gap:16px; background:#141310; border:1px solid var(--border); border-radius:8px; padding:12px 14px; margin:4px 0 12px; }
   .mini-cohort-title{ font-size:10px; font-weight:700; color:var(--textSecondary); text-transform:uppercase; letter-spacing:.03em; margin-bottom:6px; }
   @media (max-width:640px){ .mini-cohort-box{ grid-template-columns:1fr; } }
@@ -4375,7 +4377,8 @@ async function carregarTimeline(processoId){
   const { data, error } = await sb.from('movimentacoes_processo')
     .select('*, usuarios_perfil(nome_exibicao)')
     .eq('processo_id', processoId)
-    .order('data_movimentacao',{ascending:false});
+    .order('data_movimentacao',{ascending:false})
+    .order('criado_em',{ascending:false}); // desempate: mesma data, mostra a cadastrada mais recentemente primeiro (não ordem alfabética)
   if(error){ document.getElementById('det-timeline').innerHTML = ''; return; }
   document.getElementById('det-timeline').innerHTML = data.length ? data.map(m=>{
     const isRobo = m.origem === 'ROBO_DATAJUD';
@@ -4530,4 +4533,46 @@ async function redefinirSenhaUsuario(user_id){
   try{
     const { nova_senha } = await chamarAdminUsuarios({ action:'redefinir_senha', user_id });
     alert(`Nova senha provisória: ${nova_senha}\n\nRepasse pra pessoa — ela pode trocar depois em "Esqueci minha senha".`);
-  }catch(e){ toast('Erro: '+e.messa
+  }catch(e){ toast('Erro: '+e.message); }
+}
+
+async function alterarStatusUsuario(user_id, ativo){
+  if(!confirm(ativo ? 'Reativar o acesso desse usuário?' : 'Desativar o acesso desse usuário? Ele não conseguirá mais entrar no sistema.')) return;
+  try{
+    await chamarAdminUsuarios({ action:'alterar_status', user_id, ativo });
+    toast(ativo ? 'Usuário reativado.' : 'Usuário desativado.');
+    await carregarUsuarios();
+    await carregarUsuariosAtivos();
+  }catch(e){ toast('Erro: '+e.message); }
+}
+
+async function alterarPermissoesUsuario(user_id, is_admin){
+  if(!confirm(is_admin ? 'Tornar este usuário administrador?' : 'Remover a permissão de administrador deste usuário?')) return;
+  try{
+    await chamarAdminUsuarios({ action:'editar_permissoes', user_id, is_admin });
+    toast('Permissões atualizadas.');
+    await carregarUsuarios();
+  }catch(e){ toast('Erro: '+e.message); }
+}
+
+async function excluirUsuario(user_id){
+  if(!confirm('Excluir este usuário definitivamente? Essa ação não pode ser desfeita. Se o usuário já tiver processos ou tarefas vinculados a ele, a exclusão pode ser bloqueada — nesse caso, use "Desativar" em vez de excluir.')) return;
+  try{
+    await chamarAdminUsuarios({ action:'excluir', user_id });
+    toast('Usuário excluído.');
+    await carregarUsuarios();
+    await carregarUsuariosAtivos();
+  }catch(e){ toast('Erro: '+e.message); }
+}
+
+// Registra o service worker do PWA — habilita "Adicionar à tela inicial"
+// no celular. Falha silenciosa de propósito: navegadores mais antigos ou
+// sem suporte não devem quebrar o uso normal do sistema.
+if('serviceWorker' in navigator){
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js').catch(e => console.warn('Service worker não registrado:', e));
+  });
+}
+</script>
+</body>
+</html>
