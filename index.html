@@ -415,6 +415,7 @@
           <label style="display:flex; align-items:center; gap:8px; font-weight:400;"><input type="checkbox" class="portal-tipo-check" value="CONTRATO" style="width:auto;"> Contrato</label>
           <label style="display:flex; align-items:center; gap:8px; font-weight:400;"><input type="checkbox" class="portal-tipo-check" value="HISTORICO_CONVERSAS" style="width:auto;"> Histórico de conversas</label>
           <label style="display:flex; align-items:center; gap:8px; font-weight:400;"><input type="checkbox" class="portal-tipo-check" value="COMPROVANTE_PAGAMENTO" style="width:auto;"> Comprovante de pagamento</label>
+          <label style="display:flex; align-items:center; gap:8px; font-weight:400;"><input type="checkbox" class="portal-tipo-check" value="LAUDO" style="width:auto;"> Laudo</label>
           <label style="display:flex; align-items:center; gap:8px; font-weight:400;"><input type="checkbox" id="portal-check-outros" class="portal-tipo-check" value="OUTROS" style="width:auto;" onchange="document.getElementById('portal-outros-desc').style.display=this.checked?'block':'none'"> Outros</label>
           <input type="text" id="portal-outros-desc" placeholder="Descreva o documento" style="display:none;">
         </div>
@@ -2749,7 +2750,7 @@ async function carregarPainelSubsidiosCompliance(){
           const infoAcao = s.status==='RECUSADA' && s.recusado_por
             ? `<div style="font-size:10px; color:var(--textMuted); margin-top:2px;">por ${nomePorId(s.recusado_por)} em ${fmtDate((s.recusado_em||'').slice(0,10))}</div>`
             : (s.aprovado_por ? `<div style="font-size:10px; color:var(--textMuted); margin-top:2px;">aprovado por ${nomePorId(s.aprovado_por)}</div>` : '');
-          return `<tr style="${vencido ? 'color:var(--erro);' : ''}" class="expandable" onclick="abrirDetalhe('${s.processo_id}')">
+          return `<tr style="${vencido ? 'color:var(--erro);' : ''}" class="expandable" onclick="abrirDetalhe('${s.processo_id}', true)">
             <td>${p.numero_processo||'—'}</td>
             <td>${p.nome_cliente||'—'}</td>
             <td>${resolvidos}/${itens.length}</td>
@@ -2934,13 +2935,18 @@ async function criarSolicitacaoEscritorioV2(){
 
 function renderItemPortalHistorico(item){
   const label = LABEL_TIPO_SUBSIDIO[item.tipo_documento] || item.tipo_documento;
+  const temObs = item.tipo_documento==='OUTROS' && item.descricao_outros;
+  const idObs = `portal-obs-item-${item.id}`;
+  const botaoObs = temObs
+    ? ` <a href="javascript:void(0)" onclick="const el=document.getElementById('${idObs}'); const abrir=el.style.display==='none'; el.style.display=abrir?'inline':'none'; event.target.textContent = abrir ? 'Esconder observação' : 'Ver observação';" style="color:var(--konsiTeal); text-decoration:underline; font-size:10px;">Ver observação</a><span id="${idObs}" style="display:none; font-style:italic; margin-left:4px;">"${item.descricao_outros}"</span>`
+    : '';
   if(item.status==='ANEXADO'){
-    return `<div style="font-size:10.5px; margin-top:4px; padding-left:2px; color:var(--sucesso);">${label} — <a href="javascript:void(0)" onclick="baixarDocumentoPortal('${item.storage_path}')" style="color:var(--konsiTeal);">baixar</a></div>`;
+    return `<div style="font-size:10.5px; margin-top:4px; padding-left:2px; color:var(--sucesso);"><b>${label}</b>${botaoObs} — <a href="javascript:void(0)" onclick="baixarDocumentoPortal('${item.storage_path}')" style="color:var(--konsiTeal);">baixar</a></div>`;
   }
   if(item.status==='NAO_LOCALIZADO'){
-    return `<div style="font-size:10.5px; margin-top:4px; padding-left:2px; color:var(--erro);">${label} — não localizado: "${item.motivo_nao_localizado||''}"</div>`;
+    return `<div style="font-size:10.5px; margin-top:4px; padding-left:2px; color:var(--erro);"><b>${label}</b>${botaoObs} — não localizado: "${item.motivo_nao_localizado||''}"</div>`;
   }
-  return `<div style="font-size:10.5px; margin-top:4px; padding-left:2px; color:var(--textMuted);">${label} — aguardando</div>`;
+  return `<div style="font-size:10.5px; margin-top:4px; padding-left:2px; color:var(--textMuted);"><b>${label}</b>${botaoObs} — aguardando</div>`;
 }
 
 async function baixarDocumentoPortal(storagePath){
@@ -2954,6 +2960,7 @@ const LABEL_TIPO_SUBSIDIO = {
   CONTRATO: 'Contrato',
   HISTORICO_CONVERSAS: 'Histórico de conversas',
   COMPROVANTE_PAGAMENTO: 'Comprovante de pagamento',
+  LAUDO: 'Laudo',
   OUTROS: 'Outros',
 };
 
@@ -2985,17 +2992,42 @@ async function carregarSubsidiosProcesso(processoId){
       <div style="display:flex; flex-direction:column; gap:6px;">
         ${itens.map(item=>renderItemSubsidio(item)).join('')}
       </div>
+      <button class="btn-ghost" style="font-size:11px; margin-top:8px;" onclick="adicionarItemExtraSubsidio('${s.id}','${processoId}')">+ Adicionar documento extra (não pedido pelo escritório)</button>
     </div>`;
   }).join('');
 }
 
-function renderItemSubsidio(item){
+// Konsi pode anexar algo que o escritório não pediu diretamente — sempre
+// categorizado como "Outros", com a descrição do que é. Reabre a
+// solicitação (volta pra "Aberta") se ela já estava marcada como Atendida,
+// já que agora tem um item novo pendente.
+async function adicionarItemExtraSubsidio(solicitacaoId, processoId){
+  const descricao = prompt('Descreva o documento que você vai anexar:');
+  if(descricao===null) return;
+  if(!descricao.trim()){ toast('Descreva o documento antes de continuar.'); return; }
+  const { error } = await sb.from('solicitacao_subsidio_itens').insert({
+    solicitacao_id: solicitacaoId, processo_id: processoId,
+    tipo_documento: 'OUTROS', descricao_outros: descricao.trim(),
+  });
+  if(error){ toast('Erro: '+error.message); return; }
+  await sb.from('solicitacoes_subsidio').update({ status: 'ABERTA' }).eq('id', solicitacaoId);
+  toast('Item adicionado — já pode anexar o documento.');
+  await carregarSubsidiosProcesso(processoId);
+}
+
+function renderLabelItemSubsidio(item){
   const label = LABEL_TIPO_SUBSIDIO[item.tipo_documento] || item.tipo_documento;
-  const descricao = item.tipo_documento==='OUTROS' && item.descricao_outros ? ` — "${item.descricao_outros}"` : '';
+  const temObs = item.tipo_documento==='OUTROS' && item.descricao_outros;
+  if(!temObs) return `<b style="font-size:11.5px;">${label}</b>`;
+  const idObs = `obs-item-${item.id}`;
+  return `<b style="font-size:11.5px;">${label}</b> <a href="javascript:void(0)" onclick="event.stopPropagation(); const el=document.getElementById('${idObs}'); const abrir=el.style.display==='none'; el.style.display=abrir?'inline':'none'; event.target.textContent = abrir ? 'Esconder observação' : 'Ver observação';" style="font-size:10px; color:var(--konsiTeal); text-decoration:underline;">Ver observação</a><span id="${idObs}" style="display:none; font-size:10.5px; color:var(--textMuted); font-style:italic; margin-left:6px;">"${item.descricao_outros}"</span>`;
+}
+
+function renderItemSubsidio(item){
   if(item.status==='ANEXADO'){
     return `<div class="panel" style="padding:8px 10px; background:var(--surfaceCardAlt);">
-      <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
-        <span style="font-size:11.5px;">${label}${descricao}</span>
+      <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap;">
+        <span>${renderLabelItemSubsidio(item)}</span>
         <button class="btn-ghost" style="font-size:10.5px;" onclick="baixarDocumentoSubsidio('${item.id}','${item.storage_path}')"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-1px; margin-right:3px;"><path d="M12 3v12m0 0 4-4m-4 4-4-4M4 19h16"/></svg>Baixar</button>
       </div>
       <div style="font-size:10px; color:var(--sucesso); margin-top:3px;">${item.nome_arquivo||''} · anexado</div>
@@ -3003,8 +3035,8 @@ function renderItemSubsidio(item){
   }
   if(item.status==='NAO_LOCALIZADO'){
     return `<div class="panel" style="padding:8px 10px; background:var(--erroBg);">
-      <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
-        <span style="font-size:11.5px;">${label}${descricao}</span>
+      <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap;">
+        <span>${renderLabelItemSubsidio(item)}</span>
         <span style="font-size:10px; color:var(--erro);">Não localizado</span>
       </div>
       <div style="font-size:10px; color:var(--erro); margin-top:3px; font-style:italic;">"${item.motivo_nao_localizado||''}"</div>
@@ -3012,7 +3044,7 @@ function renderItemSubsidio(item){
   }
   return `<div class="panel" style="padding:8px 10px;">
     <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap;">
-      <span style="font-size:11.5px;">${label}${descricao}</span>
+      <span>${renderLabelItemSubsidio(item)}</span>
       <div style="display:flex; gap:6px;">
         <button class="btn-secondary" style="width:auto; font-size:10.5px; padding:4px 10px;" onclick="acionarUploadSubsidio('${item.id}')">Anexar</button>
         <button class="btn-ghost" style="font-size:10.5px; color:var(--erro);" onclick="abrirNaoLocalizadoSubsidio('${item.id}', this)">Não localizado</button>
@@ -4135,7 +4167,7 @@ async function abrirProcessoParaCumprirTarefa(processoId){
   abrirEdicaoProcesso();
 }
 
-async function abrirDetalhe(id){
+async function abrirDetalhe(id, rolarParaSubsidios){
   processoAtualId = id;
   const p = processosCache.find(x=>x.id===id);
   document.getElementById('det-titulo').textContent = p.numero_processo;
@@ -4170,6 +4202,12 @@ async function abrirDetalhe(id){
   await carregarComunicacoesDjen(id);
   if(p.e_parte_no_processo) await carregarSubsidiosProcesso(id);
   openModal('modal-detalhe');
+
+  if(rolarParaSubsidios && p.e_parte_no_processo){
+    setTimeout(()=>{
+      document.getElementById('det-subsidios-wrap').scrollIntoView({ behavior:'smooth', block:'start' });
+    }, 150); // pequena espera pro modal terminar de abrir/renderizar antes de rolar
+  }
 }
 
 const LABEL_CAMPO_LOG = {
