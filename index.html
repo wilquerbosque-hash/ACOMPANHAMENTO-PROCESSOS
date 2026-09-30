@@ -2889,6 +2889,7 @@ function renderDashboardPortal(lista){
     const itens = s.solicitacao_subsidio_itens || [];
     const numero = s.processoInfo.numero_processo || s.numero_processo_informado || '(processo)';
     const nome = s.processoInfo.nome_cliente || s.nome_autor_informado || '';
+    const podeEditar = s.status==='ABERTA' || s.status==='AGUARDANDO_CADASTRO';
     return `<div class="panel" style="margin-bottom:10px;">
       <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px; flex-wrap:wrap;">
         <div>
@@ -2900,8 +2901,77 @@ function renderDashboardPortal(lista){
       <div style="font-size:10.5px; color:var(--textMuted); margin:8px 0;">${s.prazo_fatal_escritorio ? `Prazo fatal: ${fmtDate(s.prazo_fatal_escritorio)} · ` : ''}Solicitado em ${fmtDate(s.criado_em.slice(0,10))}</div>
       ${s.status==='RECUSADA' ? `<div style="font-size:10.5px; color:var(--erro); margin-bottom:8px; font-style:italic;">Motivo: "${s.motivo_recusa||''}"</div>` : ''}
       <div>${itens.map(i=>renderItemPortalHistorico(i)).join('')}</div>
+      ${podeEditar ? `
+        <div style="margin-top:10px;">
+          <a href="javascript:void(0)" onclick="toggleEdicaoSolicitacaoPortal('${s.id}')" style="font-size:10.5px; color:var(--konsiTeal); text-decoration:underline;">Editar solicitação</a>
+        </div>
+        <div id="portal-edicao-${s.id}" style="display:none; margin-top:10px; padding-top:10px; border-top:1px solid var(--border);">
+          <label style="font-size:10px; color:var(--textSecondary); display:block; margin-bottom:4px;">Prazo fatal da defesa</label>
+          <div style="display:flex; gap:8px; margin-bottom:8px;">
+            <input type="date" id="portal-edit-prazo-${s.id}" value="${s.prazo_fatal_escritorio||''}" ${!s.prazo_fatal_escritorio?'disabled':''} style="flex:1;">
+            <button class="btn-secondary" style="width:auto; font-size:10.5px; white-space:nowrap;" onclick="salvarPrazoSolicitacaoPortal('${s.id}')">Salvar prazo</button>
+          </div>
+          <label style="display:flex; align-items:center; gap:6px; font-size:10.5px; font-weight:400; margin-bottom:12px;">
+            <input type="checkbox" id="portal-edit-sem-prazo-${s.id}" style="width:auto;" ${!s.prazo_fatal_escritorio?'checked':''} onchange="document.getElementById('portal-edit-prazo-${s.id}').disabled=this.checked;">
+            Sem prazo em curso
+          </label>
+          <label style="font-size:10px; color:var(--textSecondary); display:block; margin-bottom:6px;">Adicionar documento (complementação)</label>
+          <div style="display:flex; flex-direction:column; gap:6px; margin-bottom:8px;">
+            <label style="display:flex; align-items:center; gap:6px; font-size:11px; font-weight:400;"><input type="checkbox" class="portal-comp-check-${s.id}" value="CONTRATO" style="width:auto;"> Contrato</label>
+            <label style="display:flex; align-items:center; gap:6px; font-size:11px; font-weight:400;"><input type="checkbox" class="portal-comp-check-${s.id}" value="HISTORICO_CONVERSAS" style="width:auto;"> Histórico de conversas</label>
+            <label style="display:flex; align-items:center; gap:6px; font-size:11px; font-weight:400;"><input type="checkbox" class="portal-comp-check-${s.id}" value="COMPROVANTE_PAGAMENTO" style="width:auto;"> Comprovante de pagamento</label>
+            <label style="display:flex; align-items:center; gap:6px; font-size:11px; font-weight:400;"><input type="checkbox" class="portal-comp-check-${s.id}" value="LAUDO" style="width:auto;"> Laudo</label>
+            <label style="display:flex; align-items:center; gap:6px; font-size:11px; font-weight:400;"><input type="checkbox" id="portal-comp-outros-${s.id}" class="portal-comp-check-${s.id}" value="OUTROS" style="width:auto;" onchange="document.getElementById('portal-comp-outros-desc-${s.id}').style.display=this.checked?'block':'none'"> Outros</label>
+            <input type="text" id="portal-comp-outros-desc-${s.id}" placeholder="Descreva o documento" style="display:none;">
+          </div>
+          <button class="btn-secondary" style="width:auto; font-size:10.5px;" onclick="adicionarComplementacaoPortal('${s.id}','${s.processo_id||''}')">Adicionar</button>
+        </div>
+      ` : ''}
     </div>`;
   }).join('');
+}
+
+function toggleEdicaoSolicitacaoPortal(solicitacaoId){
+  const el = document.getElementById(`portal-edicao-${solicitacaoId}`);
+  el.style.display = el.style.display==='none' ? 'block' : 'none';
+}
+
+async function salvarPrazoSolicitacaoPortal(solicitacaoId){
+  const semPrazo = document.getElementById(`portal-edit-sem-prazo-${solicitacaoId}`).checked;
+  const prazoFatal = semPrazo ? null : document.getElementById(`portal-edit-prazo-${solicitacaoId}`).value;
+  if(!semPrazo && !prazoFatal){ toast('Informe uma data, ou marque "sem prazo em curso".'); return; }
+  let prazoInterno = null;
+  if(prazoFatal){
+    const d = new Date(prazoFatal+'T00:00:00');
+    d.setDate(d.getDate() - 7);
+    prazoInterno = d.toISOString().slice(0,10);
+  }
+  const { error } = await sb.from('solicitacoes_subsidio')
+    .update({ prazo_fatal_escritorio: prazoFatal, prazo_interno_konsi: prazoInterno })
+    .eq('id', solicitacaoId);
+  if(error){ toast('Erro: '+error.message); return; }
+  toast('Prazo atualizado.');
+  await carregarDashboardPortal();
+}
+
+async function adicionarComplementacaoPortal(solicitacaoId, processoId){
+  const marcados = [...document.querySelectorAll(`.portal-comp-check-${solicitacaoId}:checked`)].map(c=>c.value);
+  if(!marcados.length){ toast('Marque ao menos um tipo de documento.'); return; }
+  const outrosDesc = document.getElementById(`portal-comp-outros-desc-${solicitacaoId}`).value.trim();
+  if(marcados.includes('OUTROS') && !outrosDesc){ toast('Descreva o documento no campo "Outros".'); return; }
+
+  const itens = marcados.map(tipo=>({
+    solicitacao_id: solicitacaoId,
+    processo_id: processoId || null,
+    tipo_documento: tipo,
+    descricao_outros: tipo==='OUTROS' ? outrosDesc : null,
+    complementar: true, // veio depois do pedido original — a Konsi vê isso destacado
+  }));
+  const { error } = await sb.from('solicitacao_subsidio_itens').insert(itens);
+  if(error){ toast('Erro: '+error.message); return; }
+
+  toast('Documento adicionado como complementação da solicitação.');
+  await carregarDashboardPortal();
 }
 
 function abrirNovaSolicitacaoPortal(){
@@ -2971,13 +3041,14 @@ function renderItemPortalHistorico(item){
   const botaoObs = temObs
     ? ` <a href="javascript:void(0)" onclick="const el=document.getElementById('${idObs}'); const abrir=el.style.display==='none'; el.style.display=abrir?'inline':'none'; event.target.textContent = abrir ? 'Esconder observação' : 'Ver observação';" style="color:var(--konsiTeal); text-decoration:underline; font-size:10px;">Ver observação</a><span id="${idObs}" style="display:none; font-style:italic; margin-left:4px;">"${item.descricao_outros}"</span>`
     : '';
+  const seloComplementar = item.complementar ? ` <span class="badge-robo" style="font-size:9px;" title="Adicionado depois do pedido original">Complementação</span>` : '';
   if(item.status==='ANEXADO'){
-    return `<div style="font-size:10.5px; margin-top:4px; padding-left:2px; color:var(--sucesso);"><b>${label}</b>${botaoObs} — <a href="javascript:void(0)" onclick="baixarDocumentoPortal('${item.storage_path}')" style="color:var(--konsiTeal);">baixar</a></div>`;
+    return `<div style="font-size:10.5px; margin-top:4px; padding-left:2px; color:var(--sucesso);"><b>${label}</b>${seloComplementar}${botaoObs} — <a href="javascript:void(0)" onclick="baixarDocumentoPortal('${item.storage_path}')" style="color:var(--konsiTeal);">baixar</a></div>`;
   }
   if(item.status==='NAO_LOCALIZADO'){
-    return `<div style="font-size:10.5px; margin-top:4px; padding-left:2px; color:var(--erro);"><b>${label}</b>${botaoObs} — não localizado: "${item.motivo_nao_localizado||''}"</div>`;
+    return `<div style="font-size:10.5px; margin-top:4px; padding-left:2px; color:var(--erro);"><b>${label}</b>${seloComplementar}${botaoObs} — não localizado: "${item.motivo_nao_localizado||''}"</div>`;
   }
-  return `<div style="font-size:10.5px; margin-top:4px; padding-left:2px; color:var(--textMuted);"><b>${label}</b>${botaoObs} — aguardando</div>`;
+  return `<div style="font-size:10.5px; margin-top:4px; padding-left:2px; color:var(--textMuted);"><b>${label}</b>${seloComplementar}${botaoObs} — aguardando</div>`;
 }
 
 async function baixarDocumentoPortal(storagePath){
@@ -3049,9 +3120,10 @@ async function adicionarItemExtraSubsidio(solicitacaoId, processoId){
 function renderLabelItemSubsidio(item){
   const label = LABEL_TIPO_SUBSIDIO[item.tipo_documento] || item.tipo_documento;
   const temObs = item.tipo_documento==='OUTROS' && item.descricao_outros;
-  if(!temObs) return `<b style="font-size:11.5px;">${label}</b>`;
+  const seloComplementar = item.complementar ? ` <span class="badge-robo" style="font-size:9px;" title="Adicionado pelo escritório depois do pedido original">Complementação</span>` : '';
+  if(!temObs) return `<b style="font-size:11.5px;">${label}</b>${seloComplementar}`;
   const idObs = `obs-item-${item.id}`;
-  return `<b style="font-size:11.5px;">${label}</b> <a href="javascript:void(0)" onclick="event.stopPropagation(); const el=document.getElementById('${idObs}'); const abrir=el.style.display==='none'; el.style.display=abrir?'inline':'none'; event.target.textContent = abrir ? 'Esconder observação' : 'Ver observação';" style="font-size:10px; color:var(--konsiTeal); text-decoration:underline;">Ver observação</a><span id="${idObs}" style="display:none; font-size:10.5px; color:var(--textMuted); font-style:italic; margin-left:6px;">"${item.descricao_outros}"</span>`;
+  return `<b style="font-size:11.5px;">${label}</b>${seloComplementar} <a href="javascript:void(0)" onclick="event.stopPropagation(); const el=document.getElementById('${idObs}'); const abrir=el.style.display==='none'; el.style.display=abrir?'inline':'none'; event.target.textContent = abrir ? 'Esconder observação' : 'Ver observação';" style="font-size:10px; color:var(--konsiTeal); text-decoration:underline;">Ver observação</a><span id="${idObs}" style="display:none; font-size:10.5px; color:var(--textMuted); font-style:italic; margin-left:6px;">"${item.descricao_outros}"</span>`;
 }
 
 function renderItemSubsidio(item){
