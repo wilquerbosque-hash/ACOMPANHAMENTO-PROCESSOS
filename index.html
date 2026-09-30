@@ -468,6 +468,7 @@
       <div class="page-head">
         <div><h2>Visão geral</h2><p>Exposição e andamento dos processos judiciais recepcionados</p></div>
       </div>
+      <div id="dash-banner-cadastros-pendentes-home" style="display:none; margin-bottom:20px;"></div>
       <div id="banner-mes-faltando"></div>
       <div id="painel-15d-dashboard"></div>
       <div class="cards-row" id="kpi-cards"></div>
@@ -1446,7 +1447,6 @@ async function carregarTudo(){
   await carregarDashboard();
   await carregarTarefas();
   await carregarMetricas();
-  renderBannerCadastrosPendentes(); // só pra atualizar o selo do nav — o banner em si só aparece na aba Subsídios
   showView('dashboard');
   document.getElementById('fab-btn').style.display='none';
 }
@@ -1904,6 +1904,7 @@ function renderPainel15Dias(containerId){
 
 async function carregarDashboard(){
   renderPainel15Dias('painel-15d-dashboard');
+  await renderBannerCadastrosPendentes();
   const ativos = processosGerais().filter(p=>(p.status_processo||'ATIVO')==='ATIVO');
   const total = ativos.length;
   const valorTotal = ativos.reduce((s,p)=>s+(Number(p.valor_risco)||0),0);
@@ -1995,25 +1996,53 @@ async function carregarDashboard(){
 }
 
 async function renderBannerCadastrosPendentes(){
-  const el = document.getElementById('dash-banner-cadastros-pendentes');
+  const containers = ['dash-banner-cadastros-pendentes', 'dash-banner-cadastros-pendentes-home']
+    .map(id=>document.getElementById(id)).filter(Boolean);
   const badge = document.getElementById('nav-subsidios-badge');
-  const { data: pendentes } = await sb.from('solicitacoes_subsidio')
+
+  const hoje = new Date();
+  const emTresDias = new Date(hoje);
+  emTresDias.setDate(emTresDias.getDate() + 3);
+  const emTresDiasStr = emTresDias.toISOString().slice(0,10);
+
+  const { data: pendentesCadastro } = await sb.from('solicitacoes_subsidio')
     .select('numero_processo_informado, nome_autor_informado')
     .eq('status', 'AGUARDANDO_CADASTRO');
 
+  // Prazo INTERNO da Konsi (não o prazo fatal do escritório pra apresentar
+  // a defesa) — avisa a partir de 3 dias antes de vencer, ou já vencido.
+  const { data: prazosProximos } = await sb.from('solicitacoes_subsidio')
+    .select('processo_id, prazo_interno_konsi')
+    .eq('status', 'ABERTA')
+    .not('prazo_interno_konsi', 'is', null)
+    .lte('prazo_interno_konsi', emTresDiasStr);
+
+  const totalAlertas = (pendentesCadastro?.length||0) + (prazosProximos?.length||0);
   if(badge){
-    if(pendentes?.length){ badge.textContent = pendentes.length; badge.style.display = 'inline-block'; }
+    if(totalAlertas){ badge.textContent = totalAlertas; badge.style.display = 'inline-block'; }
     else { badge.style.display = 'none'; }
   }
 
-  if(!pendentes?.length){ el.style.display = 'none'; return; }
-  el.style.display = 'block';
-  el.innerHTML = `
-    <div class="panel" style="background:var(--alertaBg); border:1px solid var(--alerta);">
-      <b style="font-size:13px; color:var(--alerta);">⚠ ${pendentes.length} pedido${pendentes.length===1?'':'s'} de cadastro de ação nova, enviado${pendentes.length===1?'':'s'} pelo escritório</b>
-      <div style="font-size:11.5px; color:var(--textSecondary); margin-top:4px;">${pendentes.slice(0,5).map(p=>`${p.numero_processo_informado||'(sem número)'} — ${p.nome_autor_informado||''}`).join(' · ')}${pendentes.length>5 ? ` e mais ${pendentes.length-5}...` : ''}</div>
-    </div>
-  `;
+  if(!totalAlertas){ containers.forEach(el=>el.style.display='none'); return; }
+
+  const mapaProcessos = Object.fromEntries(processosCache.map(p=>[p.id, p]));
+  let html = '';
+  if(pendentesCadastro?.length){
+    html += `<div class="panel" style="background:var(--alertaBg); border:1px solid var(--alerta); margin-bottom:${prazosProximos?.length ? '8px' : '0'};">
+      <b style="font-size:13px; color:var(--alerta);">⚠ ${pendentesCadastro.length} pedido${pendentesCadastro.length===1?'':'s'} de cadastro de ação nova, enviado${pendentesCadastro.length===1?'':'s'} pelo escritório</b>
+      <div style="font-size:11.5px; color:var(--textSecondary); margin-top:4px;">${pendentesCadastro.slice(0,5).map(p=>`${p.numero_processo_informado||'(sem número)'} — ${p.nome_autor_informado||''}`).join(' · ')}${pendentesCadastro.length>5 ? ` e mais ${pendentesCadastro.length-5}...` : ''}</div>
+    </div>`;
+  }
+  if(prazosProximos?.length){
+    html += `<div class="panel" style="background:var(--erroBg); border:1px solid var(--erro);">
+      <b style="font-size:13px; color:var(--erro);">⏰ ${prazosProximos.length} solicitaç${prazosProximos.length===1?'ão':'ões'} de subsídio com o NOSSO prazo interno vencendo em até 3 dias (ou já vencido)</b>
+      <div style="font-size:11.5px; color:var(--textSecondary); margin-top:4px;">${prazosProximos.slice(0,5).map(s=>{
+        const p = mapaProcessos[s.processo_id]||{};
+        return `${p.numero_processo||'(processo)'} — prazo ${fmtDate(s.prazo_interno_konsi)}`;
+      }).join(' · ')}${prazosProximos.length>5 ? ` e mais ${prazosProximos.length-5}...` : ''}</div>
+    </div>`;
+  }
+  containers.forEach(el=>{ el.style.display = 'block'; el.innerHTML = html; });
 }
 
 async function carregarAbaSubsidios(){
@@ -4501,46 +4530,4 @@ async function redefinirSenhaUsuario(user_id){
   try{
     const { nova_senha } = await chamarAdminUsuarios({ action:'redefinir_senha', user_id });
     alert(`Nova senha provisória: ${nova_senha}\n\nRepasse pra pessoa — ela pode trocar depois em "Esqueci minha senha".`);
-  }catch(e){ toast('Erro: '+e.message); }
-}
-
-async function alterarStatusUsuario(user_id, ativo){
-  if(!confirm(ativo ? 'Reativar o acesso desse usuário?' : 'Desativar o acesso desse usuário? Ele não conseguirá mais entrar no sistema.')) return;
-  try{
-    await chamarAdminUsuarios({ action:'alterar_status', user_id, ativo });
-    toast(ativo ? 'Usuário reativado.' : 'Usuário desativado.');
-    await carregarUsuarios();
-    await carregarUsuariosAtivos();
-  }catch(e){ toast('Erro: '+e.message); }
-}
-
-async function alterarPermissoesUsuario(user_id, is_admin){
-  if(!confirm(is_admin ? 'Tornar este usuário administrador?' : 'Remover a permissão de administrador deste usuário?')) return;
-  try{
-    await chamarAdminUsuarios({ action:'editar_permissoes', user_id, is_admin });
-    toast('Permissões atualizadas.');
-    await carregarUsuarios();
-  }catch(e){ toast('Erro: '+e.message); }
-}
-
-async function excluirUsuario(user_id){
-  if(!confirm('Excluir este usuário definitivamente? Essa ação não pode ser desfeita. Se o usuário já tiver processos ou tarefas vinculados a ele, a exclusão pode ser bloqueada — nesse caso, use "Desativar" em vez de excluir.')) return;
-  try{
-    await chamarAdminUsuarios({ action:'excluir', user_id });
-    toast('Usuário excluído.');
-    await carregarUsuarios();
-    await carregarUsuariosAtivos();
-  }catch(e){ toast('Erro: '+e.message); }
-}
-
-// Registra o service worker do PWA — habilita "Adicionar à tela inicial"
-// no celular. Falha silenciosa de propósito: navegadores mais antigos ou
-// sem suporte não devem quebrar o uso normal do sistema.
-if('serviceWorker' in navigator){
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('sw.js').catch(e => console.warn('Service worker não registrado:', e));
-  });
-}
-</script>
-</body>
-</html>
+  }catch(e){ toast('Erro: '+e.messa
