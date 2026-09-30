@@ -2745,13 +2745,17 @@ async function carregarPainelSubsidiosCompliance(){
           const itens = s.solicitacao_subsidio_itens || [];
           const resolvidos = itens.filter(i=>i.status!=='PENDENTE').length;
           const vencido = s.status==='ABERTA' && s.prazo_interno_konsi && s.prazo_interno_konsi < hoje;
+          const nomePorId = (id) => usuariosAtivosCache.find(u=>u.id===id)?.nome_exibicao || 'alguém';
+          const infoAcao = s.status==='RECUSADA' && s.recusado_por
+            ? `<div style="font-size:10px; color:var(--textMuted); margin-top:2px;">por ${nomePorId(s.recusado_por)} em ${fmtDate((s.recusado_em||'').slice(0,10))}</div>`
+            : (s.aprovado_por ? `<div style="font-size:10px; color:var(--textMuted); margin-top:2px;">aprovado por ${nomePorId(s.aprovado_por)}</div>` : '');
           return `<tr style="${vencido ? 'color:var(--erro);' : ''}" class="expandable" onclick="abrirDetalhe('${s.processo_id}')">
             <td>${p.numero_processo||'—'}</td>
             <td>${p.nome_cliente||'—'}</td>
             <td>${resolvidos}/${itens.length}</td>
             <td>${s.prazo_fatal_escritorio ? fmtDate(s.prazo_fatal_escritorio) : 'sem prazo'}</td>
             <td>${s.prazo_interno_konsi ? fmtDate(s.prazo_interno_konsi)+(vencido?' (vencido)':'') : '—'}</td>
-            <td><span class="badge ${s.status==='ATENDIDA'?'badge-BAIXO':s.status==='RECUSADA'?'badge-CRITICO':'badge-ATRASADA'}" title="${s.status==='RECUSADA' ? (s.motivo_recusa||'') : ''}">${s.status==='ATENDIDA'?'Atendida':s.status==='RECUSADA'?'Recusada':'Aguardando'}</span></td>
+            <td><span class="badge ${s.status==='ATENDIDA'?'badge-BAIXO':s.status==='RECUSADA'?'badge-CRITICO':'badge-ATRASADA'}" title="${s.status==='RECUSADA' ? (s.motivo_recusa||'') : ''}">${s.status==='ATENDIDA'?'Atendida':s.status==='RECUSADA'?'Recusada':'Aguardando'}</span>${infoAcao}</td>
           </tr>`;
         }).join('')}
       </tbody>
@@ -2776,7 +2780,7 @@ async function reprovarCadastroSolicitacao(solicitacaoId){
   const motivo = prompt('Motivo da reprovação (o escritório verá essa informação no portal dele):');
   if(motivo===null) return; // cancelou
   if(!motivo.trim()){ toast('Informe um motivo antes de reprovar.'); return; }
-  const { error } = await sb.from('solicitacoes_subsidio').update({ status:'RECUSADA', motivo_recusa: motivo.trim() }).eq('id', solicitacaoId);
+  const { error } = await sb.from('solicitacoes_subsidio').update({ status:'RECUSADA', motivo_recusa: motivo.trim(), recusado_por: currentUser.id, recusado_em: new Date().toISOString() }).eq('id', solicitacaoId);
   if(error){ toast('Erro: '+error.message); return; }
   toast('Pedido reprovado.');
   await carregarAbaSubsidios();
@@ -3723,27 +3727,49 @@ async function salvarNovoProcesso(){
   closeModal('modal-novo-processo');
 
   // Se esse cadastro veio de uma aprovação de pedido do escritório, vincula
-  // a solicitação (e seus itens) ao processo recém-criado.
+  // a solicitação (e seus itens) ao processo recém-criado. Usa .select()
+  // depois do .update() pra CONFIRMAR de verdade que a linha foi alterada —
+  // se a permissão bloquear isso (ex: quem aprovou não é admin), o Supabase
+  // não devolve erro nenhum, só devolve zero linhas — sem essa checagem, o
+  // sistema "achava" que tinha vinculado, e a solicitação ficava presa em
+  // "aguardando cadastro" pra sempre, travando uma segunda tentativa de
+  // aprovação por duplicidade de número de processo.
+  let solicitacaoVinculada = false;
   if(window.__solicitacaoParaVincular){
     const solicitacaoId = window.__solicitacaoParaVincular;
-    await sb.from('solicitacoes_subsidio').update({ processo_id: novoProcesso.id, status: 'ABERTA' }).eq('id', solicitacaoId);
-    await sb.from('solicitacao_subsidio_itens').update({ processo_id: novoProcesso.id }).eq('solicitacao_id', solicitacaoId);
-    // A tarefa de acompanhamento não foi criada na hora do pedido (ainda não
-    // tinha processo) — cria agora, já que a solicitação passou a valer.
-    const responsavelId = usuariosAtivosCache.find(u=>(u.nome_exibicao||'').toLowerCase().includes('juliana') && (u.nome_exibicao||'').toLowerCase().includes('bacelar'))?.id || null;
-    await sb.from('tarefas_acompanhamento').insert({
-      processo_id: novoProcesso.id,
-      titulo: `Solicitação de subsídios do escritório — processo ${novoProcesso.numero_processo}`,
-      data_prazo: new Date().toISOString().slice(0,10),
-      status: 'PENDENTE', origem: 'MANUAL', responsavel_id: responsavelId,
-    });
+    const { data: vinculada, error: erroVinculo } = await sb.from('solicitacoes_subsidio')
+      .update({ processo_id: novoProcesso.id, status: 'ABERTA', aprovado_por: currentUser.id, aprovado_em: new Date().toISOString() })
+      .eq('id', solicitacaoId)
+      .select('id');
+    if(erroVinculo || !vinculada?.length){
+      toast('Processo cadastrado, mas NÃO consegui vincular a solicitação de subsídio — provavelmente só administradores podem aprovar esse tipo de pedido. Avise um admin pra vincular manualmente.');
+    } else {
+      const { error: erroItens } = await sb.from('solicitacao_subsidio_itens').update({ processo_id: novoProcesso.id }).eq('solicitacao_id', solicitacaoId);
+      if(erroItens){ toast('Solicitação vinculada, mas houve erro ao atualizar os itens: '+erroItens.message); }
+      // A tarefa de acompanhamento não foi criada na hora do pedido (ainda
+      // não tinha processo) — cria agora, já que a solicitação passou a valer.
+      const responsavelId = usuariosAtivosCache.find(u=>(u.nome_exibicao||'').toLowerCase().includes('juliana') && (u.nome_exibicao||'').toLowerCase().includes('bacelar'))?.id || null;
+      await sb.from('tarefas_acompanhamento').insert({
+        processo_id: novoProcesso.id,
+        titulo: `Solicitação de subsídios do escritório — processo ${novoProcesso.numero_processo}`,
+        data_prazo: new Date().toISOString().slice(0,10),
+        status: 'PENDENTE', origem: 'MANUAL', responsavel_id: responsavelId,
+      });
+      solicitacaoVinculada = true;
+      toast('Processo cadastrado e solicitação de subsídio vinculada.');
+    }
     window.__solicitacaoParaVincular = null;
     await renderBannerCadastrosPendentes(); // atualiza o selo do nav na hora
-    toast('Processo cadastrado e solicitação de subsídio vinculada.');
   }
 
   await carregarProcessos(); await carregarDashboard();
   await enriquecerProcessoComDatajud(novoProcesso.id, novoProcesso.numero_processo);
+
+  // Já veio de uma aprovação e vinculou direitinho? Abre o processo direto
+  // na aba de Subsídios, pronto pra anexar — sem precisar procurar depois.
+  if(solicitacaoVinculada){
+    await abrirDetalhe(novoProcesso.id);
+  }
 }
 
 // Chama a Edge Function em "modo processo único" — usada só no cadastro
