@@ -2980,6 +2980,7 @@ function renderDashboardPortal(lista){
       ${s.prazo_interno_konsi && (s.status==='ABERTA'||s.status==='AGUARDANDO_CADASTRO') ? `<div style="font-size:10.5px; margin-bottom:8px;">SLA de atendimento da Konsi: <b style="color:${diasRestantes<0?'var(--erro)':diasRestantes<=3?'var(--alerta)':'var(--sucesso)'};">${fmtDate(s.prazo_interno_konsi)}${diasRestantes!=null ? ` · ${diasRestantes>=0?'faltam '+diasRestantes+' dias':'vencido há '+Math.abs(diasRestantes)+' dias'}` : ''}</b></div>` : ''}
       ${s.status==='RECUSADA' ? `<div style="font-size:10.5px; color:var(--erro); margin-bottom:8px; font-style:italic;">Motivo: "${s.motivo_recusa||''}"</div>` : ''}
       ${tipo==='OBRIGACAO_FAZER' && s.observacao_obrigacao ? `<div style="font-size:10.5px; color:var(--textSecondary); margin-bottom:8px; font-style:italic;">"${s.observacao_obrigacao}"</div>` : ''}
+      ${tipo==='OBRIGACAO_FAZER' && s.observacao_cumprimento_konsi ? `<div style="font-size:10.5px; color:var(--sucesso); margin-bottom:8px;">Cumprimento confirmado pela Konsi: "${s.observacao_cumprimento_konsi}"</div>` : ''}
       <div>${itens.map(i=>renderItemPortalHistorico(i)).join('')}</div>
       ${podeEditar ? `
         <div style="margin-top:10px; display:flex; gap:14px;">
@@ -2997,16 +2998,19 @@ function renderDashboardPortal(lista){
             <input type="checkbox" id="portal-edit-sem-prazo-${s.id}" style="width:auto;" ${!s.prazo_fatal_escritorio?'checked':''} onchange="document.getElementById('portal-edit-prazo-${s.id}').disabled=this.checked;">
             Sem prazo em curso
           </label>
-          <label style="font-size:10px; color:var(--textSecondary); display:block; margin-bottom:6px;">Adicionar documento (complementação)</label>
-          <div style="display:flex; flex-direction:column; gap:6px; margin-bottom:8px;">
-            <label style="display:flex; align-items:center; gap:6px; font-size:11px; font-weight:400;"><input type="checkbox" class="portal-comp-check-${s.id}" value="CONTRATO" style="width:auto;"> Contrato</label>
-            <label style="display:flex; align-items:center; gap:6px; font-size:11px; font-weight:400;"><input type="checkbox" class="portal-comp-check-${s.id}" value="HISTORICO_CONVERSAS" style="width:auto;"> Histórico de conversas</label>
-            <label style="display:flex; align-items:center; gap:6px; font-size:11px; font-weight:400;"><input type="checkbox" class="portal-comp-check-${s.id}" value="COMPROVANTE_PAGAMENTO" style="width:auto;"> Comprovante de pagamento</label>
-            <label style="display:flex; align-items:center; gap:6px; font-size:11px; font-weight:400;"><input type="checkbox" class="portal-comp-check-${s.id}" value="LAUDO" style="width:auto;"> Laudo</label>
-            <label style="display:flex; align-items:center; gap:6px; font-size:11px; font-weight:400;"><input type="checkbox" id="portal-comp-outros-${s.id}" class="portal-comp-check-${s.id}" value="OUTROS" style="width:auto;" onchange="document.getElementById('portal-comp-outros-desc-${s.id}').style.display=this.checked?'block':'none'"> Outros</label>
-            <input type="text" id="portal-comp-outros-desc-${s.id}" placeholder="Descreva o documento" style="display:none;">
+          <a href="javascript:void(0)" onclick="document.getElementById('comp-secao-${s.id}').style.display='block'; event.target.style.display='none';" style="font-size:10.5px; color:var(--konsiTeal); text-decoration:underline;">+ Solicitar documento adicional</a>
+          <div id="comp-secao-${s.id}" style="display:none; margin-top:10px;">
+            <label style="font-size:10px; color:var(--textSecondary); display:block; margin-bottom:6px;">Qual documento, além dos já pedidos?</label>
+            <div style="display:flex; flex-direction:column; gap:6px; margin-bottom:8px;">
+              <label style="display:flex; align-items:center; gap:6px; font-size:11px; font-weight:400;"><input type="checkbox" class="portal-comp-check-${s.id}" value="CONTRATO" style="width:auto;"> Contrato</label>
+              <label style="display:flex; align-items:center; gap:6px; font-size:11px; font-weight:400;"><input type="checkbox" class="portal-comp-check-${s.id}" value="HISTORICO_CONVERSAS" style="width:auto;"> Histórico de conversas</label>
+              <label style="display:flex; align-items:center; gap:6px; font-size:11px; font-weight:400;"><input type="checkbox" class="portal-comp-check-${s.id}" value="COMPROVANTE_PAGAMENTO" style="width:auto;"> Comprovante de pagamento</label>
+              <label style="display:flex; align-items:center; gap:6px; font-size:11px; font-weight:400;"><input type="checkbox" class="portal-comp-check-${s.id}" value="LAUDO" style="width:auto;"> Laudo</label>
+              <label style="display:flex; align-items:center; gap:6px; font-size:11px; font-weight:400;"><input type="checkbox" id="portal-comp-outros-${s.id}" class="portal-comp-check-${s.id}" value="OUTROS" style="width:auto;" onchange="document.getElementById('portal-comp-outros-desc-${s.id}').style.display=this.checked?'block':'none'"> Outros</label>
+              <input type="text" id="portal-comp-outros-desc-${s.id}" placeholder="Descreva o documento" style="display:none;">
+            </div>
+            <button class="btn-secondary" style="width:auto; font-size:10.5px;" onclick="adicionarComplementacaoPortal('${s.id}','${s.processo_id||''}')">Adicionar</button>
           </div>
-          <button class="btn-secondary" style="width:auto; font-size:10.5px;" onclick="adicionarComplementacaoPortal('${s.id}','${s.processo_id||''}')">Adicionar</button>
           ` : ''}
         </div>
       ` : ''}
@@ -3227,6 +3231,7 @@ const LABEL_TIPO_SUBSIDIO = {
   LAUDO: 'Laudo',
   OUTROS: 'Outros',
   DECISAO_JUDICIAL: 'Decisão judicial',
+  COMPROVANTE_CUMPRIMENTO: 'Comprovante de cumprimento',
 };
 
 async function carregarSubsidiosProcesso(processoId){
@@ -3267,8 +3272,18 @@ async function carregarSubsidiosProcesso(processoId){
       <div style="display:flex; flex-direction:column; gap:6px;">
         ${itens.map(item=>renderItemSubsidio(item)).join('')}
       </div>
+      ${tipo==='OBRIGACAO_FAZER' && s.observacao_cumprimento_konsi ? `<div class="field-note" style="margin-top:8px; color:var(--sucesso);">Cumprimento: "${s.observacao_cumprimento_konsi}"</div>` : ''}
       ${tipo==='SUBSIDIO' ? `<button class="btn-ghost" style="font-size:11px; margin-top:8px;" onclick="adicionarItemExtraSubsidio('${s.id}','${processoId}')">+ Adicionar documento extra (não pedido pelo escritório)</button>` : ''}
-      ${tipo==='OBRIGACAO_FAZER' && s.status==='ABERTA' ? `<button class="btn-secondary" style="width:auto; font-size:11px; margin-top:8px;" onclick="marcarObrigacaoCumprida('${s.id}')">Marcar como cumprida</button>` : ''}
+      ${tipo==='OBRIGACAO_FAZER' && s.status==='ABERTA' ? `
+        <a href="javascript:void(0)" onclick="document.getElementById('cumprimento-form-${s.id}').style.display='block'; event.target.style.display='none';" style="font-size:11px; color:var(--konsiTeal); text-decoration:underline; display:inline-block; margin-top:8px;">Marcar como cumprida</a>
+        <div id="cumprimento-form-${s.id}" style="display:none; margin-top:8px; padding-top:10px; border-top:1px solid var(--border);">
+          <label style="font-size:10px; color:var(--textSecondary); display:block; margin-bottom:4px;">Observação sobre o cumprimento</label>
+          <textarea id="cumprimento-obs-${s.id}" rows="2" placeholder="Descreva o que foi feito pra cumprir a obrigação" style="font-size:12px; width:100%; margin-bottom:8px;"></textarea>
+          <label style="font-size:10px; color:var(--textSecondary); display:block; margin-bottom:4px;">Comprovante do cumprimento (opcional)</label>
+          <input type="file" id="cumprimento-arquivo-${s.id}" style="margin-bottom:10px;">
+          <button class="btn-secondary" style="width:auto; font-size:11px;" onclick="marcarObrigacaoCumprida('${s.id}')">Confirmar cumprimento</button>
+        </div>
+      ` : ''}
     </div>`;
   }).join('');
 }
@@ -3280,10 +3295,28 @@ async function carregarSubsidiosProcesso(processoId){
 // "Cumprida" em Obrigação de Fazer é sempre ação manual da Konsi — o
 // gatilho automático de status fica de fora desse tipo de propósito (ver
 // migração 48), já que anexar a decisão é coisa do escritório, não prova
-// de cumprimento da própria Konsi.
+// de cumprimento da própria Konsi. Aqui registramos a observação de como
+// foi cumprida, e opcionalmente o comprovante.
 async function marcarObrigacaoCumprida(solicitacaoId){
+  const observacao = document.getElementById(`cumprimento-obs-${solicitacaoId}`).value.trim();
+  const arquivo = document.getElementById(`cumprimento-arquivo-${solicitacaoId}`).files[0];
+  if(!observacao){ toast('Descreva, mesmo que brevemente, como a obrigação foi cumprida.'); return; }
   if(!confirm('Confirma que a Konsi já cumpriu essa obrigação?')) return;
-  const { data, error } = await sb.from('solicitacoes_subsidio').update({ status:'ATENDIDA' }).eq('id', solicitacaoId).select('id');
+
+  if(arquivo){
+    const { data: novoItem, error: erroItem } = await sb.from('solicitacao_subsidio_itens').insert({
+      solicitacao_id: solicitacaoId, processo_id: processoAtualId, tipo_documento: 'COMPROVANTE_CUMPRIMENTO',
+    }).select('id').single();
+    if(erroItem){ toast('Erro ao registrar o comprovante: '+erroItem.message); return; }
+    const caminho = `${novoItem.id}/${Date.now()}-${arquivo.name}`;
+    const { error: erroUpload } = await sb.storage.from('subsidios').upload(caminho, arquivo);
+    if(erroUpload){ toast('Erro ao enviar o comprovante: '+erroUpload.message); return; }
+    await sb.from('solicitacao_subsidio_itens').update({ status:'ANEXADO', storage_path: caminho, nome_arquivo: arquivo.name }).eq('id', novoItem.id);
+  }
+
+  const { data, error } = await sb.from('solicitacoes_subsidio')
+    .update({ status:'ATENDIDA', observacao_cumprimento_konsi: observacao })
+    .eq('id', solicitacaoId).select('id');
   if(error || !data?.length){ toast('Erro ao confirmar — '+(error?.message||'não foi possível salvar.')); return; }
   toast('Obrigação marcada como cumprida.');
   await carregarSubsidiosProcesso(processoAtualId);
