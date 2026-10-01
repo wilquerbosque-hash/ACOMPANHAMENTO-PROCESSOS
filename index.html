@@ -2889,6 +2889,30 @@ function aprovarCadastroSolicitacao(solicitacaoId, numero, nomeAutor){
   toast('Revise os dados e complete o cadastro — ele já vem marcado como "Konsi é parte".');
 }
 
+// Reaproveitada nos dois caminhos de aprovação (processo novo ou processo
+// que já existia) — fecha a brecha de duas solicitações pro mesmo processo
+// (ex: obrigação de fazer + subsídio), vinculando QUALQUER outra pendente
+// pro mesmo número, não só a que disparou essa aprovação específica.
+async function vincularOutrasSolicitacoesOrfas(processoId, numeroProcesso){
+  const normalizado = (numeroProcesso||'').replace(/\D/g,'');
+  const { data: pendentes } = await sb.from('solicitacoes_subsidio')
+    .select('id, numero_processo_informado')
+    .eq('status', 'AGUARDANDO_CADASTRO');
+  const orfas = (pendentes||[]).filter(o => (o.numero_processo_informado||'').replace(/\D/g,'') === normalizado);
+  for(const orfa of orfas){
+    await sb.from('solicitacoes_subsidio').update({ processo_id: processoId, status:'ABERTA', aprovado_por: currentUser.id, aprovado_em: new Date().toISOString() }).eq('id', orfa.id);
+    await sb.from('solicitacao_subsidio_itens').update({ processo_id: processoId }).eq('solicitacao_id', orfa.id);
+    const respId = usuariosAtivosCache.find(u=>(u.nome_exibicao||'').toLowerCase().includes('juliana') && (u.nome_exibicao||'').toLowerCase().includes('bacelar'))?.id || null;
+    await sb.from('tarefas_acompanhamento').insert({
+      processo_id: processoId,
+      titulo: `Solicitação de subsídios do escritório — processo ${numeroProcesso}`,
+      data_prazo: new Date().toISOString().slice(0,10),
+      status:'PENDENTE', origem:'MANUAL', responsavel_id: respId,
+    });
+  }
+  if(orfas.length) toast(`${orfas.length} outra(s) solicitação(ões) pendente(s) pro mesmo processo também foram vinculadas.`);
+}
+
 async function vincularSolicitacaoAProcessoExistente(solicitacaoId, processoId){
   const { data: vinculada, error } = await sb.from('solicitacoes_subsidio')
     .update({ processo_id: processoId, status: 'ABERTA', aprovado_por: currentUser.id, aprovado_em: new Date().toISOString() })
@@ -2904,6 +2928,8 @@ async function vincularSolicitacaoAProcessoExistente(solicitacaoId, processoId){
     data_prazo: new Date().toISOString().slice(0,10),
     status: 'PENDENTE', origem: 'MANUAL', responsavel_id: responsavelId,
   });
+
+  await vincularOutrasSolicitacoesOrfas(processoId, processo?.numero_processo||'');
 
   toast('Solicitação vinculada ao processo já existente.');
   await renderBannerCadastrosPendentes();
@@ -4181,6 +4207,15 @@ async function salvarNovoProcesso(){
 
   await carregarProcessos(); await carregarDashboard();
   await enriquecerProcessoComDatajud(novoProcesso.id, novoProcesso.numero_processo);
+
+  // Fecha a brecha de "duas solicitações pro mesmo processo novo": além da
+  // que disparou essa aprovação (já vinculada acima, se foi o caso), pode
+  // haver OUTRA solicitação (ex: obrigação de fazer + subsídio pro mesmo
+  // processo) ainda "aguardando cadastro" com o mesmo número — sem isso,
+  // ela ficaria órfã pra sempre, mesmo o processo já existindo. A que já
+  // foi vinculada acima não entra aqui de novo, porque o status dela já
+  // deixou de ser "aguardando cadastro".
+  await vincularOutrasSolicitacoesOrfas(novoProcesso.id, novoProcesso.numero_processo);
 
   // Já veio de uma aprovação e vinculou direitinho? Abre o processo direto
   // na aba de Subsídios, pronto pra anexar — sem precisar procurar depois.
