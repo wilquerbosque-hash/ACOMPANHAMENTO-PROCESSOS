@@ -259,10 +259,15 @@ async function processarUmProcessoDjen(admin: any, processo: any) {
         ? `Possível resultado identificado no DJEN: ${melhorSugestao} — confirmar e atualizar Situação Atual`
         : `Nova comunicação no DJEN: ${maisRecente.tipoComunicacao || "publicação"}`;
       const responsavel_id = await buscarResponsavelPadrao(admin);
+      // Margem de 3 dias (não "hoje") — sem isso, qualquer diferença de fuso
+      // entre o servidor e o horário do Brasil podia fazer a tarefa nascer
+      // já com aparência de atrasada, mesmo tendo sido criada na hora certa.
+      const prazo = new Date();
+      prazo.setDate(prazo.getDate() + 3);
       await admin.from("tarefas_acompanhamento").insert({
         processo_id: processo.id,
         titulo,
-        data_prazo: new Date().toISOString().slice(0, 10),
+        data_prazo: prazo.toISOString().slice(0, 10),
         status: "PENDENTE",
         origem: "ROBO_DATAJUD",
         responsavel_id,
