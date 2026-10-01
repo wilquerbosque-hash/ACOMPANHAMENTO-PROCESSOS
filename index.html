@@ -2893,10 +2893,16 @@ function aprovarCadastroSolicitacao(solicitacaoId, numero, nomeAutor){
 // que já existia) — fecha a brecha de duas solicitações pro mesmo processo
 // (ex: obrigação de fazer + subsídio), vinculando QUALQUER outra pendente
 // pro mesmo número, não só a que disparou essa aprovação específica.
+function tituloTarefaSolicitacao(tipo, numeroProcesso){
+  return tipo === 'OBRIGACAO_FAZER'
+    ? `Cumprimento de obrigação de fazer — processo ${numeroProcesso}`
+    : `Solicitação de subsídios do escritório — processo ${numeroProcesso}`;
+}
+
 async function vincularOutrasSolicitacoesOrfas(processoId, numeroProcesso){
   const normalizado = (numeroProcesso||'').replace(/\D/g,'');
   const { data: pendentes } = await sb.from('solicitacoes_subsidio')
-    .select('id, numero_processo_informado')
+    .select('id, numero_processo_informado, tipo_solicitacao')
     .eq('status', 'AGUARDANDO_CADASTRO');
   const orfas = (pendentes||[]).filter(o => (o.numero_processo_informado||'').replace(/\D/g,'') === normalizado);
   for(const orfa of orfas){
@@ -2905,7 +2911,7 @@ async function vincularOutrasSolicitacoesOrfas(processoId, numeroProcesso){
     const respId = usuariosAtivosCache.find(u=>(u.nome_exibicao||'').toLowerCase().includes('juliana') && (u.nome_exibicao||'').toLowerCase().includes('bacelar'))?.id || null;
     await sb.from('tarefas_acompanhamento').insert({
       processo_id: processoId,
-      titulo: `Solicitação de subsídios do escritório — processo ${numeroProcesso}`,
+      titulo: tituloTarefaSolicitacao(orfa.tipo_solicitacao, numeroProcesso),
       data_prazo: new Date().toISOString().slice(0,10),
       status:'PENDENTE', origem:'MANUAL', responsavel_id: respId,
     });
@@ -2916,7 +2922,7 @@ async function vincularOutrasSolicitacoesOrfas(processoId, numeroProcesso){
 async function vincularSolicitacaoAProcessoExistente(solicitacaoId, processoId){
   const { data: vinculada, error } = await sb.from('solicitacoes_subsidio')
     .update({ processo_id: processoId, status: 'ABERTA', aprovado_por: currentUser.id, aprovado_em: new Date().toISOString() })
-    .eq('id', solicitacaoId).select('id');
+    .eq('id', solicitacaoId).select('id, tipo_solicitacao');
   if(error || !vinculada?.length){ toast('Erro ao vincular — '+(error?.message||'não foi possível confirmar.')); return; }
   await sb.from('solicitacao_subsidio_itens').update({ processo_id: processoId }).eq('solicitacao_id', solicitacaoId);
 
@@ -2924,7 +2930,7 @@ async function vincularSolicitacaoAProcessoExistente(solicitacaoId, processoId){
   const responsavelId = usuariosAtivosCache.find(u=>(u.nome_exibicao||'').toLowerCase().includes('juliana') && (u.nome_exibicao||'').toLowerCase().includes('bacelar'))?.id || null;
   await sb.from('tarefas_acompanhamento').insert({
     processo_id: processoId,
-    titulo: `Solicitação de subsídios do escritório — processo ${processo?.numero_processo||''}`,
+    titulo: tituloTarefaSolicitacao(vinculada[0].tipo_solicitacao, processo?.numero_processo||''),
     data_prazo: new Date().toISOString().slice(0,10),
     status: 'PENDENTE', origem: 'MANUAL', responsavel_id: responsavelId,
   });
@@ -4183,7 +4189,7 @@ async function salvarNovoProcesso(){
     const { data: vinculada, error: erroVinculo } = await sb.from('solicitacoes_subsidio')
       .update({ processo_id: novoProcesso.id, status: 'ABERTA', aprovado_por: currentUser.id, aprovado_em: new Date().toISOString() })
       .eq('id', solicitacaoId)
-      .select('id');
+      .select('id, tipo_solicitacao');
     if(erroVinculo || !vinculada?.length){
       toast('Processo cadastrado, mas NÃO consegui vincular a solicitação de subsídio — provavelmente só administradores podem aprovar esse tipo de pedido. Avise um admin pra vincular manualmente.');
     } else {
@@ -4194,7 +4200,7 @@ async function salvarNovoProcesso(){
       const responsavelId = usuariosAtivosCache.find(u=>(u.nome_exibicao||'').toLowerCase().includes('juliana') && (u.nome_exibicao||'').toLowerCase().includes('bacelar'))?.id || null;
       await sb.from('tarefas_acompanhamento').insert({
         processo_id: novoProcesso.id,
-        titulo: `Solicitação de subsídios do escritório — processo ${novoProcesso.numero_processo}`,
+        titulo: tituloTarefaSolicitacao(vinculada[0].tipo_solicitacao, novoProcesso.numero_processo),
         data_prazo: new Date().toISOString().slice(0,10),
         status: 'PENDENTE', origem: 'MANUAL', responsavel_id: responsavelId,
       });
