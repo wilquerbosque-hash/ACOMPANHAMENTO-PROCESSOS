@@ -390,7 +390,10 @@
         <div class="kpi-card"><div><div class="label">Aguardando</div><div class="value" id="portal-kpi-aguardando">—</div></div></div>
         <div class="kpi-card"><div><div class="label">Atendidas</div><div class="value" id="portal-kpi-atendidas">—</div></div></div>
       </div>
-      <button class="btn-primary" style="width:auto;" onclick="abrirNovaSolicitacaoPortal()">+ Nova solicitação</button>
+      <div style="display:flex; gap:8px;">
+        <button class="btn-primary" style="width:auto;" onclick="abrirNovaSolicitacaoPortal()">+ Nova solicitação</button>
+        <button class="btn-secondary" style="width:auto;" onclick="abrirNovaObrigacaoPortal()">+ Nova obrigação de fazer</button>
+      </div>
     </div>
 
     <input type="text" id="portal-filtro" placeholder="Buscar por número do processo ou nome do autor" oninput="filtrarDashboardPortal(this.value)" style="margin-bottom:14px;">
@@ -442,6 +445,35 @@
   </div>
 </div>
 
+<!-- ============ MODAL: NOVA OBRIGAÇÃO DE FAZER (portal do escritório) ============ -->
+<div class="modal-overlay" id="modal-portal-nova-obrigacao">
+  <div class="modal">
+    <div class="modal-head"><h3>Nova obrigação de fazer</h3><button onclick="closeModal('modal-portal-nova-obrigacao')">✕</button></div>
+    <p class="field-note" style="margin-top:-8px;">Para cumprimento de liminar ou decisão transitada em julgado.</p>
+
+    <div class="form-row">
+      <div><label>Número do processo (padrão CNJ)</label><input type="text" id="portal-obg-numero" placeholder="0001234-56.2026.8.05.0001"></div>
+      <div><label>Nome completo do autor</label><input type="text" id="portal-obg-nome-autor" placeholder="Nome completo"></div>
+    </div>
+    <div class="form-row single">
+      <div><label>Prazo fatal para cumprimento</label><input type="date" id="portal-obg-prazo"></div>
+    </div>
+    <div class="form-row single">
+      <div><label>Observações <span style="font-weight:400; color:var(--textMuted);">— descreva o que precisa ser cumprido</span></label>
+        <textarea id="portal-obg-observacao" rows="3" placeholder="Ex: obrigação de excluir o nome do autor dos cadastros de restrição em até 5 dias úteis"></textarea>
+      </div>
+    </div>
+    <div class="form-row single">
+      <div><label>Decisão judicial (anexar)</label><input type="file" id="portal-obg-arquivo"></div>
+    </div>
+
+    <div class="form-actions">
+      <button class="btn-secondary" onclick="closeModal('modal-portal-nova-obrigacao')">Cancelar</button>
+      <button class="btn-primary" style="width:auto" onclick="criarObrigacaoFazerPortal()">Registrar obrigação</button>
+    </div>
+  </div>
+</div>
+
 <!-- ============ APP ============ -->
 <div id="app">
   <header class="topbar">
@@ -471,6 +503,7 @@
         <div><h2>Visão geral</h2><p>Exposição e andamento dos processos judiciais recepcionados</p></div>
       </div>
       <div id="dash-banner-cadastros-pendentes-home" style="display:none; margin-bottom:20px;"></div>
+      <div id="dash-kpis-obrigacoes" style="display:none; margin-bottom:20px;"></div>
       <div id="banner-mes-faltando"></div>
       <div id="painel-15d-dashboard"></div>
       <div class="cards-row" id="kpi-cards"></div>
@@ -1907,6 +1940,7 @@ function renderPainel15Dias(containerId){
 async function carregarDashboard(){
   renderPainel15Dias('painel-15d-dashboard');
   await renderBannerCadastrosPendentes();
+  await renderKpisObrigacoesDashboard();
   const ativos = processosGerais().filter(p=>(p.status_processo||'ATIVO')==='ATIVO');
   const total = ativos.length;
   const valorTotal = ativos.reduce((s,p)=>s+(Number(p.valor_risco)||0),0);
@@ -1997,6 +2031,31 @@ async function carregarDashboard(){
   }
 }
 
+// Só números aqui — o detalhamento completo (lista, anexar decisão, etc.)
+// fica exclusivamente na aba Subsídios, pra não duplicar gestão em dois lugares.
+async function renderKpisObrigacoesDashboard(){
+  const el = document.getElementById('dash-kpis-obrigacoes');
+  const { data: obrigacoes } = await sb.from('solicitacoes_subsidio')
+    .select('status')
+    .eq('tipo_solicitacao', 'OBRIGACAO_FAZER');
+  if(!obrigacoes?.length){ el.style.display = 'none'; return; }
+  el.style.display = 'block';
+  const emAberto = obrigacoes.filter(o=>o.status==='AGUARDANDO_CADASTRO').length;
+  const aCumprir = obrigacoes.filter(o=>o.status==='ABERTA').length;
+  const cumpridas = obrigacoes.filter(o=>o.status==='ATENDIDA').length;
+  el.innerHTML = `
+    <div class="panel">
+      <h3 style="margin-bottom:12px;">Obrigações de fazer</h3>
+      <div class="cards-row" style="margin:0;">
+        <div class="kpi-card"><div><div class="label">Em aberto</div><div class="value">${emAberto}</div></div></div>
+        <div class="kpi-card"><div><div class="label">A cumprir</div><div class="value">${aCumprir}</div></div></div>
+        <div class="kpi-card"><div><div class="label">Cumpridas</div><div class="value">${cumpridas}</div></div></div>
+      </div>
+      <p class="field-note" style="margin-top:10px;">Detalhamento completo na aba Subsídios.</p>
+    </div>
+  `;
+}
+
 async function renderBannerCadastrosPendentes(){
   const containers = ['dash-banner-cadastros-pendentes', 'dash-banner-cadastros-pendentes-home']
     .map(id=>document.getElementById(id)).filter(Boolean);
@@ -2008,13 +2067,13 @@ async function renderBannerCadastrosPendentes(){
   const emTresDiasStr = emTresDias.toISOString().slice(0,10);
 
   const { data: pendentesCadastro } = await sb.from('solicitacoes_subsidio')
-    .select('numero_processo_informado, nome_autor_informado')
+    .select('numero_processo_informado, nome_autor_informado, tipo_solicitacao')
     .eq('status', 'AGUARDANDO_CADASTRO');
 
   // Prazo INTERNO da Konsi (não o prazo fatal do escritório pra apresentar
   // a defesa) — avisa a partir de 3 dias antes de vencer, ou já vencido.
   const { data: prazosProximos } = await sb.from('solicitacoes_subsidio')
-    .select('processo_id, prazo_interno_konsi')
+    .select('processo_id, prazo_interno_konsi, tipo_solicitacao')
     .eq('status', 'ABERTA')
     .not('prazo_interno_konsi', 'is', null)
     .lte('prazo_interno_konsi', emTresDiasStr);
@@ -2032,15 +2091,15 @@ async function renderBannerCadastrosPendentes(){
   if(pendentesCadastro?.length){
     html += `<div class="panel" style="background:var(--alertaBg); border:1px solid var(--alerta); margin-bottom:${prazosProximos?.length ? '8px' : '0'};">
       <b style="font-size:13px; color:var(--alerta);">⚠ ${pendentesCadastro.length} pedido${pendentesCadastro.length===1?'':'s'} de cadastro de ação nova, enviado${pendentesCadastro.length===1?'':'s'} pelo escritório</b>
-      <div style="font-size:11.5px; color:var(--textSecondary); margin-top:4px;">${pendentesCadastro.slice(0,5).map(p=>`${p.numero_processo_informado||'(sem número)'} — ${p.nome_autor_informado||''}`).join(' · ')}${pendentesCadastro.length>5 ? ` e mais ${pendentesCadastro.length-5}...` : ''}</div>
+      <div style="font-size:11.5px; color:var(--textSecondary); margin-top:4px;">${pendentesCadastro.slice(0,5).map(p=>`${p.numero_processo_informado||'(sem número)'}${p.tipo_solicitacao==='OBRIGACAO_FAZER'?' (obrigação de fazer)':''} — ${p.nome_autor_informado||''}`).join(' · ')}${pendentesCadastro.length>5 ? ` e mais ${pendentesCadastro.length-5}...` : ''}</div>
     </div>`;
   }
   if(prazosProximos?.length){
     html += `<div class="panel" style="background:var(--erroBg); border:1px solid var(--erro);">
-      <b style="font-size:13px; color:var(--erro);">⏰ ${prazosProximos.length} solicitaç${prazosProximos.length===1?'ão':'ões'} de subsídio com o NOSSO prazo interno vencendo em até 3 dias (ou já vencido)</b>
+      <b style="font-size:13px; color:var(--erro);">⏰ ${prazosProximos.length} solicitaç${prazosProximos.length===1?'ão':'ões'} com o NOSSO prazo interno vencendo em até 3 dias (ou já vencido)</b>
       <div style="font-size:11.5px; color:var(--textSecondary); margin-top:4px;">${prazosProximos.slice(0,5).map(s=>{
         const p = mapaProcessos[s.processo_id]||{};
-        return `${p.numero_processo||'(processo)'} — prazo ${fmtDate(s.prazo_interno_konsi)}`;
+        return `${p.numero_processo||'(processo)'}${s.tipo_solicitacao==='OBRIGACAO_FAZER'?' (obrigação de fazer)':''} — prazo ${fmtDate(s.prazo_interno_konsi)}`;
       }).join(' · ')}${prazosProximos.length>5 ? ` e mais ${prazosProximos.length-5}...` : ''}</div>
     </div>`;
   }
@@ -2746,12 +2805,15 @@ async function carregarPainelSubsidiosCompliance(){
       <h4 style="font-size:12.5px; margin:0 0 8px; color:var(--alerta);">⚠ Pedidos de cadastro aguardando aprovação (${pendentesCadastro.length})</h4>
       ${pendentesCadastro.map(s=>{
         const itens = s.solicitacao_subsidio_itens || [];
+        const tipo = s.tipo_solicitacao || 'SUBSIDIO';
         return `<div class="panel" style="background:var(--alertaBg); border:1px solid var(--alerta); margin-bottom:8px;">
           <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">
             <div>
-              <b style="font-size:12.5px;">${s.numero_processo_informado||'(sem número)'}</b><br>
+              <b style="font-size:12.5px;">${s.numero_processo_informado||'(sem número)'}</b>
+              ${tipo==='OBRIGACAO_FAZER' ? ' <span class="badge-robo" style="font-size:9px;">Obrigação de fazer</span>' : ''}
+              <br>
               <span style="font-size:11px; color:var(--textSecondary);">${s.nome_autor_informado||''} · pedido em ${fmtDate(s.criado_em.slice(0,10))}${s.prazo_fatal_escritorio ? ' · prazo fatal '+fmtDate(s.prazo_fatal_escritorio) : ' · sem prazo em curso'}</span>
-              <div style="font-size:10.5px; color:var(--textMuted); margin-top:4px;">Documentos pedidos: ${itens.map(i=>LABEL_TIPO_SUBSIDIO[i.tipo_documento]||i.tipo_documento).join(', ')}</div>
+              <div style="font-size:10.5px; color:var(--textMuted); margin-top:4px;">${tipo==='OBRIGACAO_FAZER' ? (s.observacao_obrigacao || 'Decisão judicial anexada') : `Documentos pedidos: ${itens.map(i=>LABEL_TIPO_SUBSIDIO[i.tipo_documento]||i.tipo_documento).join(', ')}`}</div>
             </div>
             <div style="display:flex; gap:6px; flex-shrink:0;">
               <button class="btn-secondary" style="width:auto; white-space:nowrap;" onclick="aprovarCadastroSolicitacao('${s.id}','${(s.numero_processo_informado||'').replace(/'/g,"\\'")}','${(s.nome_autor_informado||'').replace(/'/g,"\\'")}')">Aprovar cadastro</button>
@@ -2770,24 +2832,29 @@ async function carregarPainelSubsidiosCompliance(){
       <div class="kpi-card"><div><div class="label">Com prazo interno vencido</div><div class="value">${demais.filter(s=>s.status==='ABERTA' && s.prazo_interno_konsi && s.prazo_interno_konsi < hoje).length}</div></div></div>
     </div>
     <div class="table-wrap"><table class="table-compact">
-      <thead><tr><th>Processo</th><th>Cliente</th><th>Itens</th><th>Prazo fatal</th><th>Prazo interno</th><th>Status</th></tr></thead>
+      <thead><tr><th>Processo</th><th>Cliente</th><th>Categoria</th><th>Itens</th><th>Prazo fatal</th><th>Prazo interno</th><th>Status</th></tr></thead>
       <tbody>
         ${demais.map(s=>{
           const p = mapaProcessos[s.processo_id] || {};
           const itens = s.solicitacao_subsidio_itens || [];
+          const tipo = s.tipo_solicitacao || 'SUBSIDIO';
           const resolvidos = itens.filter(i=>i.status!=='PENDENTE').length;
           const vencido = s.status==='ABERTA' && s.prazo_interno_konsi && s.prazo_interno_konsi < hoje;
           const nomePorId = (id) => usuariosAtivosCache.find(u=>u.id===id)?.nome_exibicao || 'alguém';
           const infoAcao = s.status==='RECUSADA' && s.recusado_por
             ? `<div style="font-size:10px; color:var(--textMuted); margin-top:2px;">por ${nomePorId(s.recusado_por)} em ${fmtDate((s.recusado_em||'').slice(0,10))}</div>`
             : (s.aprovado_por ? `<div style="font-size:10px; color:var(--textMuted); margin-top:2px;">aprovado por ${nomePorId(s.aprovado_por)}</div>` : '');
+          const rotuloStatusLinha = tipo==='OBRIGACAO_FAZER'
+            ? (s.status==='ATENDIDA' ? 'Cumprida' : s.status==='RECUSADA' ? 'Recusada' : 'A cumprir')
+            : (s.status==='ATENDIDA' ? 'Atendida' : s.status==='RECUSADA' ? 'Recusada' : 'Aguardando');
           return `<tr style="${vencido ? 'color:var(--erro);' : ''}" class="expandable" onclick="abrirDetalhe('${s.processo_id}', true)">
             <td>${p.numero_processo||'—'}</td>
             <td>${p.nome_cliente||'—'}</td>
+            <td>${tipo==='OBRIGACAO_FAZER' ? 'Obrigação de fazer' : 'Subsídio'}</td>
             <td>${resolvidos}/${itens.length}</td>
             <td>${s.prazo_fatal_escritorio ? fmtDate(s.prazo_fatal_escritorio) : 'sem prazo'}</td>
             <td>${s.prazo_interno_konsi ? fmtDate(s.prazo_interno_konsi)+(vencido?' (vencido)':'') : '—'}</td>
-            <td><span class="badge ${s.status==='ATENDIDA'?'badge-BAIXO':s.status==='RECUSADA'?'badge-CRITICO':'badge-ATRASADA'}" title="${s.status==='RECUSADA' ? (s.motivo_recusa||'') : ''}">${s.status==='ATENDIDA'?'Atendida':s.status==='RECUSADA'?'Recusada':'Aguardando'}</span>${infoAcao}</td>
+            <td><span class="badge ${s.status==='ATENDIDA'?'badge-BAIXO':s.status==='RECUSADA'?'badge-CRITICO':'badge-ATRASADA'}" title="${s.status==='RECUSADA' ? (s.motivo_recusa||'') : ''}">${rotuloStatusLinha}</span>${infoAcao}</td>
           </tr>`;
         }).join('')}
       </tbody>
@@ -2883,34 +2950,49 @@ function renderDashboardPortal(lista){
     el.innerHTML = emptyState('Nenhuma solicitação ainda', 'Clique em "+ Nova solicitação" e informe o número do processo pra começar.');
     return;
   }
-  const rotuloStatus = { AGUARDANDO_CADASTRO: 'Aguardando cadastro na Konsi', ABERTA: 'Aguardando', ATENDIDA: 'Atendida', RECUSADA: 'Não aprovado' };
+  const LABELS_STATUS = {
+    SUBSIDIO: { AGUARDANDO_CADASTRO: 'Aguardando cadastro na Konsi', ABERTA: 'Aguardando', ATENDIDA: 'Atendida', RECUSADA: 'Não aprovado' },
+    OBRIGACAO_FAZER: { AGUARDANDO_CADASTRO: 'Em aberto', ABERTA: 'A cumprir', ATENDIDA: 'Cumprida', RECUSADA: 'Não aprovado' },
+  };
   const classeStatus = { AGUARDANDO_CADASTRO: 'badge-ALTO', ABERTA: 'badge-ATRASADA', ATENDIDA: 'badge-BAIXO', RECUSADA: 'badge-CRITICO' };
+  const hojeStr = new Date().toISOString().slice(0,10);
   el.innerHTML = lista.map(s=>{
+    const tipo = s.tipo_solicitacao || 'SUBSIDIO';
+    const rotuloStatus = LABELS_STATUS[tipo];
     const itens = s.solicitacao_subsidio_itens || [];
     const numero = s.processoInfo.numero_processo || s.numero_processo_informado || '(processo)';
     const nome = s.processoInfo.nome_cliente || s.nome_autor_informado || '';
     const podeEditar = s.status==='ABERTA' || s.status==='AGUARDANDO_CADASTRO';
+    const diasRestantes = s.prazo_interno_konsi ? diasEntre(hojeStr, s.prazo_interno_konsi) : null;
     return `<div class="panel" style="margin-bottom:10px;">
       <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px; flex-wrap:wrap;">
         <div>
-          <b style="font-size:12.5px;">${numero}</b><br>
-          <span style="font-size:11px; color:var(--textSecondary);">${nome}</span>
+          <b style="font-size:12.5px;">${numero}</b>
+          ${tipo==='OBRIGACAO_FAZER' ? ' <span class="badge-robo" style="font-size:9px;">Obrigação de fazer</span>' : ''}
+          <br><span style="font-size:11px; color:var(--textSecondary);">${nome}</span>
         </div>
         <span class="badge ${classeStatus[s.status]||'badge-ATRASADA'}">${rotuloStatus[s.status]||s.status}</span>
       </div>
-      <div style="font-size:10.5px; color:var(--textMuted); margin:8px 0;">${s.prazo_fatal_escritorio ? `Prazo fatal: ${fmtDate(s.prazo_fatal_escritorio)} · ` : ''}Solicitado em ${fmtDate(s.criado_em.slice(0,10))}</div>
+      <div style="font-size:10.5px; color:var(--textMuted); margin:8px 0;">
+        ${s.prazo_fatal_escritorio ? `Prazo fatal: <b style="color:var(--textPrimary);">${fmtDate(s.prazo_fatal_escritorio)}</b> · ` : 'Sem prazo em curso · '}
+        Solicitado em ${fmtDate(s.criado_em.slice(0,10))}
+      </div>
+      ${s.prazo_interno_konsi && (s.status==='ABERTA'||s.status==='AGUARDANDO_CADASTRO') ? `<div style="font-size:10.5px; margin-bottom:8px;">SLA de atendimento da Konsi: <b style="color:${diasRestantes<0?'var(--erro)':diasRestantes<=3?'var(--alerta)':'var(--sucesso)'};">${fmtDate(s.prazo_interno_konsi)}${diasRestantes!=null ? ` · ${diasRestantes>=0?'faltam '+diasRestantes+' dias':'vencido há '+Math.abs(diasRestantes)+' dias'}` : ''}</b></div>` : ''}
       ${s.status==='RECUSADA' ? `<div style="font-size:10.5px; color:var(--erro); margin-bottom:8px; font-style:italic;">Motivo: "${s.motivo_recusa||''}"</div>` : ''}
+      ${tipo==='OBRIGACAO_FAZER' && s.observacao_obrigacao ? `<div style="font-size:10.5px; color:var(--textSecondary); margin-bottom:8px; font-style:italic;">"${s.observacao_obrigacao}"</div>` : ''}
       <div>${itens.map(i=>renderItemPortalHistorico(i)).join('')}</div>
       ${podeEditar ? `
-        <div style="margin-top:10px;">
+        <div style="margin-top:10px; display:flex; gap:14px;">
           <a href="javascript:void(0)" onclick="toggleEdicaoSolicitacaoPortal('${s.id}')" style="font-size:10.5px; color:var(--konsiTeal); text-decoration:underline;">Editar solicitação</a>
+          <a href="javascript:void(0)" onclick="excluirSolicitacaoPortal('${s.id}')" style="font-size:10.5px; color:var(--erro); text-decoration:underline;">Excluir</a>
         </div>
         <div id="portal-edicao-${s.id}" style="display:none; margin-top:10px; padding-top:10px; border-top:1px solid var(--border);">
-          <label style="font-size:10px; color:var(--textSecondary); display:block; margin-bottom:4px;">Prazo fatal da defesa</label>
+          <label style="font-size:10px; color:var(--textSecondary); display:block; margin-bottom:4px;">Prazo fatal${tipo==='OBRIGACAO_FAZER' ? ' da obrigação' : ' da defesa'}</label>
           <div style="display:flex; gap:8px; margin-bottom:8px;">
             <input type="date" id="portal-edit-prazo-${s.id}" value="${s.prazo_fatal_escritorio||''}" ${!s.prazo_fatal_escritorio?'disabled':''} style="flex:1;">
             <button class="btn-secondary" style="width:auto; font-size:10.5px; white-space:nowrap;" onclick="salvarPrazoSolicitacaoPortal('${s.id}')">Salvar prazo</button>
           </div>
+          ${tipo==='SUBSIDIO' ? `
           <label style="display:flex; align-items:center; gap:6px; font-size:10.5px; font-weight:400; margin-bottom:12px;">
             <input type="checkbox" id="portal-edit-sem-prazo-${s.id}" style="width:auto;" ${!s.prazo_fatal_escritorio?'checked':''} onchange="document.getElementById('portal-edit-prazo-${s.id}').disabled=this.checked;">
             Sem prazo em curso
@@ -2925,10 +3007,19 @@ function renderDashboardPortal(lista){
             <input type="text" id="portal-comp-outros-desc-${s.id}" placeholder="Descreva o documento" style="display:none;">
           </div>
           <button class="btn-secondary" style="width:auto; font-size:10.5px;" onclick="adicionarComplementacaoPortal('${s.id}','${s.processo_id||''}')">Adicionar</button>
+          ` : ''}
         </div>
       ` : ''}
     </div>`;
   }).join('');
+}
+
+async function excluirSolicitacaoPortal(solicitacaoId){
+  if(!confirm('Excluir esta solicitação? Essa ação não pode ser desfeita — use se foi lançada por engano ou duplicidade.')) return;
+  const { error } = await sb.from('solicitacoes_subsidio').delete().eq('id', solicitacaoId);
+  if(error){ toast('Erro: '+error.message); return; }
+  toast('Solicitação excluída.');
+  await carregarDashboardPortal();
 }
 
 function toggleEdicaoSolicitacaoPortal(solicitacaoId){
@@ -2946,11 +3037,16 @@ async function salvarPrazoSolicitacaoPortal(solicitacaoId){
     d.setDate(d.getDate() - 7);
     prazoInterno = d.toISOString().slice(0,10);
   }
-  const { error } = await sb.from('solicitacoes_subsidio')
+  // .select() depois do .update() confirma de verdade que a linha mudou —
+  // sem isso, uma atualização bloqueada por permissão não dá erro nenhum,
+  // só devolve zero linhas, e o sistema "achava" que tinha salvado.
+  const { data: salvo, error } = await sb.from('solicitacoes_subsidio')
     .update({ prazo_fatal_escritorio: prazoFatal, prazo_interno_konsi: prazoInterno })
-    .eq('id', solicitacaoId);
+    .eq('id', solicitacaoId)
+    .select('id, prazo_fatal_escritorio');
   if(error){ toast('Erro: '+error.message); return; }
-  toast('Prazo atualizado.');
+  if(!salvo?.length){ toast('O prazo NÃO foi salvo — não foi possível confirmar a alteração. Avise a Konsi.'); return; }
+  toast('Prazo atualizado com sucesso.');
   await carregarDashboardPortal();
 }
 
@@ -2971,6 +3067,72 @@ async function adicionarComplementacaoPortal(solicitacaoId, processoId){
   if(error){ toast('Erro: '+error.message); return; }
 
   toast('Documento adicionado como complementação da solicitação.');
+  await carregarDashboardPortal();
+}
+
+function abrirNovaObrigacaoPortal(){
+  document.getElementById('portal-obg-numero').value = '';
+  document.getElementById('portal-obg-nome-autor').value = '';
+  document.getElementById('portal-obg-prazo').value = '';
+  document.getElementById('portal-obg-observacao').value = '';
+  document.getElementById('portal-obg-arquivo').value = '';
+  openModal('modal-portal-nova-obrigacao');
+}
+
+async function criarObrigacaoFazerPortal(){
+  const numeroDigitado = document.getElementById('portal-obg-numero').value.trim();
+  const nomeAutor = document.getElementById('portal-obg-nome-autor').value.trim();
+  const prazoFatal = document.getElementById('portal-obg-prazo').value;
+  const observacao = document.getElementById('portal-obg-observacao').value.trim();
+  const arquivo = document.getElementById('portal-obg-arquivo').files[0];
+
+  if(!numeroDigitado){ toast('Informe o número do processo.'); return; }
+  if(!nomeAutor){ toast('Informe o nome completo do autor.'); return; }
+  if(!prazoFatal){ toast('Informe o prazo fatal para cumprimento.'); return; }
+  if(!arquivo){ toast('Anexe a decisão judicial.'); return; }
+
+  const normalizado = numeroDigitado.replace(/\D/g,'');
+  const encontrado = Object.values(window.__mapaProcessosEscritorio||{})
+    .find(p => (p.numero_processo||'').replace(/\D/g,'') === normalizado);
+
+  const prazoInterno = new Date(prazoFatal+'T00:00:00');
+  prazoInterno.setDate(prazoInterno.getDate() - 7);
+
+  const payloadSolicitacao = {
+    tipo_solicitacao: 'OBRIGACAO_FAZER',
+    observacao_obrigacao: observacao || null,
+    prazo_fatal_escritorio: prazoFatal,
+    prazo_interno_konsi: prazoInterno.toISOString().slice(0,10),
+    ...(encontrado
+      ? { processo_id: encontrado.id }
+      : { processo_id: null, numero_processo_informado: numeroDigitado, nome_autor_informado: nomeAutor, status: 'AGUARDANDO_CADASTRO' }),
+  };
+
+  const { data: nova, error } = await sb.from('solicitacoes_subsidio').insert(payloadSolicitacao).select('id').single();
+  if(error){ toast('Erro: '+error.message); return; }
+
+  const { data: novoItem, error: erroItem } = await sb.from('solicitacao_subsidio_itens').insert({
+    solicitacao_id: nova.id,
+    processo_id: encontrado ? encontrado.id : null,
+    tipo_documento: 'DECISAO_JUDICIAL',
+  }).select('id').single();
+  if(erroItem){ toast('Erro ao registrar o item: '+erroItem.message); return; }
+
+  // Já sobe a decisão judicial anexada na hora — é obrigatória nesse tipo
+  // de solicitação, não faz sentido deixar pendente.
+  const caminho = `${novoItem.id}/${Date.now()}-${arquivo.name}`;
+  const { error: erroUpload } = await sb.storage.from('subsidios').upload(caminho, arquivo);
+  if(erroUpload){ toast('Obrigação registrada, mas o upload da decisão falhou: '+erroUpload.message); await carregarDashboardPortal(); closeModal('modal-portal-nova-obrigacao'); return; }
+  const { data: marcado, error: erroMarcar } = await sb.from('solicitacao_subsidio_itens')
+    .update({ status:'ANEXADO', storage_path: caminho, nome_arquivo: arquivo.name })
+    .eq('id', novoItem.id)
+    .select('id');
+  if(erroMarcar || !marcado?.length){
+    toast('O arquivo subiu, mas não consegui confirmar o registro — avise a Konsi pra conferir.');
+  }
+
+  toast(encontrado ? 'Obrigação de fazer registrada.' : 'Pedido de cadastro enviado — a Konsi vai revisar e aprovar.');
+  closeModal('modal-portal-nova-obrigacao');
   await carregarDashboardPortal();
 }
 
@@ -3064,6 +3226,7 @@ const LABEL_TIPO_SUBSIDIO = {
   COMPROVANTE_PAGAMENTO: 'Comprovante de pagamento',
   LAUDO: 'Laudo',
   OUTROS: 'Outros',
+  DECISAO_JUDICIAL: 'Decisão judicial',
 };
 
 async function carregarSubsidiosProcesso(processoId){
@@ -3076,25 +3239,36 @@ async function carregarSubsidiosProcesso(processoId){
     el.innerHTML = emptyState('Nenhuma solicitação de subsídio ainda', 'Aparece aqui assim que o escritório contratado pedir algo pelo portal dele.');
     return;
   }
+  const LABELS_STATUS_KONSI = {
+    SUBSIDIO: { ABERTA:'pendente', ATENDIDA:'Atendida', RECUSADA:'Recusada' },
+    OBRIGACAO_FAZER: { ABERTA:'A cumprir', ATENDIDA:'Cumprida', RECUSADA:'Recusada' },
+  };
   el.innerHTML = solicitacoes.map(s=>{
+    const tipo = s.tipo_solicitacao || 'SUBSIDIO';
     const itens = s.solicitacao_subsidio_itens || [];
     const pendentes = itens.filter(i=>i.status==='PENDENTE').length;
     const hoje = new Date().toISOString().slice(0,10);
     const diasParaPrazo = diasEntre(hoje, s.prazo_interno_konsi);
+    const rotulos = LABELS_STATUS_KONSI[tipo];
     return `
     <div class="panel" style="${s.status==='ABERTA' ? 'border-color:var(--alerta); background:var(--alertaBg);' : 'opacity:.8;'} margin-bottom:10px;">
       <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px; flex-wrap:wrap;">
-        <span style="font-size:11px; color:var(--textSecondary);">Solicitado pelo escritório em ${fmtDate(s.criado_em.slice(0,10))}</span>
-        <span class="badge ${s.status==='ATENDIDA'?'badge-BAIXO':'badge-ATRASADA'}">${s.status==='ATENDIDA' ? 'Atendida' : `${pendentes} pendente${pendentes===1?'':'s'}`}</span>
+        <span style="font-size:11px; color:var(--textSecondary);">
+          ${tipo==='OBRIGACAO_FAZER' ? '<span class="badge-robo" style="font-size:9px; margin-right:6px;">Obrigação de fazer</span>' : ''}
+          Solicitado pelo escritório em ${fmtDate(s.criado_em.slice(0,10))}
+        </span>
+        <span class="badge ${s.status==='ATENDIDA'?'badge-BAIXO':'badge-ATRASADA'}">${s.status==='ATENDIDA' ? rotulos.ATENDIDA : (tipo==='OBRIGACAO_FAZER' ? rotulos.ABERTA : `${pendentes} pendente${pendentes===1?'':'s'}`)}</span>
       </div>
       <div style="display:flex; gap:16px; margin:8px 0 12px; font-size:11px; flex-wrap:wrap;">
-        <div><span style="color:var(--textMuted);">Prazo fatal (escritório)</span><br><b>${fmtDate(s.prazo_fatal_escritorio)}</b></div>
-        <div><span style="color:var(--textMuted);">Prazo interno Konsi</span><br><b style="color:${diasParaPrazo!=null && diasParaPrazo<=3 ? 'var(--erro)':'inherit'};">${fmtDate(s.prazo_interno_konsi)}${diasParaPrazo!=null ? ` · ${diasParaPrazo>=0?'faltam '+diasParaPrazo+' dias':'venceu'}` : ''}</b></div>
+        <div><span style="color:var(--textMuted);">Prazo fatal${tipo==='OBRIGACAO_FAZER'?' (obrigação)':' (escritório)'}</span><br><b>${fmtDate(s.prazo_fatal_escritorio)}</b></div>
+        <div><span style="color:var(--textMuted);">Prazo interno Konsi (SLA)</span><br><b style="color:${diasParaPrazo!=null && diasParaPrazo<=3 ? 'var(--erro)':'inherit'};">${fmtDate(s.prazo_interno_konsi)}${diasParaPrazo!=null ? ` · ${diasParaPrazo>=0?'faltam '+diasParaPrazo+' dias':'venceu'}` : ''}</b></div>
       </div>
+      ${tipo==='OBRIGACAO_FAZER' && s.observacao_obrigacao ? `<div class="field-note" style="margin-bottom:10px;">"${s.observacao_obrigacao}"</div>` : ''}
       <div style="display:flex; flex-direction:column; gap:6px;">
         ${itens.map(item=>renderItemSubsidio(item)).join('')}
       </div>
-      <button class="btn-ghost" style="font-size:11px; margin-top:8px;" onclick="adicionarItemExtraSubsidio('${s.id}','${processoId}')">+ Adicionar documento extra (não pedido pelo escritório)</button>
+      ${tipo==='SUBSIDIO' ? `<button class="btn-ghost" style="font-size:11px; margin-top:8px;" onclick="adicionarItemExtraSubsidio('${s.id}','${processoId}')">+ Adicionar documento extra (não pedido pelo escritório)</button>` : ''}
+      ${tipo==='OBRIGACAO_FAZER' && s.status==='ABERTA' ? `<button class="btn-secondary" style="width:auto; font-size:11px; margin-top:8px;" onclick="marcarObrigacaoCumprida('${s.id}')">Marcar como cumprida</button>` : ''}
     </div>`;
   }).join('');
 }
@@ -3103,6 +3277,18 @@ async function carregarSubsidiosProcesso(processoId){
 // categorizado como "Outros", com a descrição do que é. Reabre a
 // solicitação (volta pra "Aberta") se ela já estava marcada como Atendida,
 // já que agora tem um item novo pendente.
+// "Cumprida" em Obrigação de Fazer é sempre ação manual da Konsi — o
+// gatilho automático de status fica de fora desse tipo de propósito (ver
+// migração 48), já que anexar a decisão é coisa do escritório, não prova
+// de cumprimento da própria Konsi.
+async function marcarObrigacaoCumprida(solicitacaoId){
+  if(!confirm('Confirma que a Konsi já cumpriu essa obrigação?')) return;
+  const { data, error } = await sb.from('solicitacoes_subsidio').update({ status:'ATENDIDA' }).eq('id', solicitacaoId).select('id');
+  if(error || !data?.length){ toast('Erro ao confirmar — '+(error?.message||'não foi possível salvar.')); return; }
+  toast('Obrigação marcada como cumprida.');
+  await carregarSubsidiosProcesso(processoAtualId);
+}
+
 async function adicionarItemExtraSubsidio(solicitacaoId, processoId){
   const descricao = prompt('Descreva o documento que você vai anexar:');
   if(descricao===null) return;
