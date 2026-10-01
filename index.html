@@ -2867,12 +2867,48 @@ async function carregarPainelSubsidiosCompliance(){
 // Pré-preenche o cadastro de processo com o que o escritório informou, e
 // guarda a solicitação pra vincular assim que o processo for salvo.
 function aprovarCadastroSolicitacao(solicitacaoId, numero, nomeAutor){
+  // Confere primeiro se já existe processo com esse número — pode acontecer
+  // de duas solicitações (ex: subsídio + obrigação) chegarem quase juntas
+  // pro mesmo processo novo; se a primeira já foi aprovada, essa segunda
+  // deve só se VINCULAR ao processo que já existe, nunca tentar criar um
+  // duplicado (que travaria por número de processo repetido).
+  const normalizado = (numero||'').replace(/\D/g,'');
+  const jaExiste = processosCache.find(p => (p.numero_processo||'').replace(/\D/g,'') === normalizado);
+
+  if(jaExiste){
+    if(!confirm(`Já existe um processo cadastrado com esse número (${jaExiste.numero_processo}) — provavelmente de outra solicitação do mesmo escritório. Vincular esta solicitação a ele, em vez de abrir um cadastro novo?`)) return;
+    vincularSolicitacaoAProcessoExistente(solicitacaoId, jaExiste.id);
+    return;
+  }
+
   window.__solicitacaoParaVincular = solicitacaoId;
   openNovoProcesso();
   document.getElementById('np-numero').value = numero;
   document.getElementById('np-nome').value = nomeAutor;
   document.getElementById('np-e-parte').checked = true;
   toast('Revise os dados e complete o cadastro — ele já vem marcado como "Konsi é parte".');
+}
+
+async function vincularSolicitacaoAProcessoExistente(solicitacaoId, processoId){
+  const { data: vinculada, error } = await sb.from('solicitacoes_subsidio')
+    .update({ processo_id: processoId, status: 'ABERTA', aprovado_por: currentUser.id, aprovado_em: new Date().toISOString() })
+    .eq('id', solicitacaoId).select('id');
+  if(error || !vinculada?.length){ toast('Erro ao vincular — '+(error?.message||'não foi possível confirmar.')); return; }
+  await sb.from('solicitacao_subsidio_itens').update({ processo_id: processoId }).eq('solicitacao_id', solicitacaoId);
+
+  const processo = processosCache.find(p=>p.id===processoId);
+  const responsavelId = usuariosAtivosCache.find(u=>(u.nome_exibicao||'').toLowerCase().includes('juliana') && (u.nome_exibicao||'').toLowerCase().includes('bacelar'))?.id || null;
+  await sb.from('tarefas_acompanhamento').insert({
+    processo_id: processoId,
+    titulo: `Solicitação de subsídios do escritório — processo ${processo?.numero_processo||''}`,
+    data_prazo: new Date().toISOString().slice(0,10),
+    status: 'PENDENTE', origem: 'MANUAL', responsavel_id: responsavelId,
+  });
+
+  toast('Solicitação vinculada ao processo já existente.');
+  await renderBannerCadastrosPendentes();
+  await carregarAbaSubsidios();
+  await abrirDetalhe(processoId, true);
 }
 
 async function reprovarCadastroSolicitacao(solicitacaoId){
@@ -4074,7 +4110,22 @@ async function salvarNovoProcesso(){
     toast('Preencha o tribunal — sem ele, o sistema não consegue buscar os dados do processo no DataJud automaticamente.'); return;
   }
   const { data: novoProcesso, error } = await sb.from('processos_judiciais').insert(payload).select('id, numero_processo').single();
-  if(error){ toast('Erro ao salvar: '+error.message); return; }
+  if(error){
+    if(error.code === '23505' && window.__solicitacaoParaVincular){
+      // Já existe processo com esse número — provável corrida entre duas
+      // solicitações (possivelmente aprovadas por sessões/pessoas
+      // diferentes quase ao mesmo tempo). Busca direto no banco, não só no
+      // cache local, já que pode ter sido outra pessoa que acabou de criar.
+      const { data: jaExiste } = await sb.from('processos_judiciais').select('id, numero_processo').eq('numero_processo', payload.numero_processo).maybeSingle();
+      if(jaExiste && confirm(`Esse número de processo já existe (provavelmente outra solicitação chegou primeiro). Vincular esta solicitação ao processo já cadastrado, em vez de criar um novo?`)){
+        closeModal('modal-novo-processo');
+        await vincularSolicitacaoAProcessoExistente(window.__solicitacaoParaVincular, jaExiste.id);
+        window.__solicitacaoParaVincular = null;
+        return;
+      }
+    }
+    toast('Erro ao salvar: '+error.message); return;
+  }
 
   // Grava todo ADE e todo motivo que foram adicionados à lista antes de
   // salvar — cada ADE vira um "contrato contestado" nas métricas, e cada
@@ -4134,6 +4185,7 @@ async function salvarNovoProcesso(){
   // Já veio de uma aprovação e vinculou direitinho? Abre o processo direto
   // na aba de Subsídios, pronto pra anexar — sem precisar procurar depois.
   if(solicitacaoVinculada){
+    await carregarAbaSubsidios(); // sem isso, a lista de pendências ficava com o estado antigo até alguém trocar de aba e voltar
     await abrirDetalhe(novoProcesso.id);
   }
 }
