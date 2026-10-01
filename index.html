@@ -2910,9 +2910,19 @@ function exportarComplianceCsv(){
 // vez no login, só com os campos liberados pro escritório, e comparamos
 // localmente — a real trava de segurança continua sendo o RLS do banco.
 async function carregarPortalEscritorio(){
+  await atualizarMapaProcessosEscritorio();
+  await carregarDashboardPortal();
+}
+
+// Reaproveitada toda vez que o escritório vai ABRIR uma solicitação nova —
+// não só no login — pra nunca decidir com uma lista desatualizada. Sem
+// isso, se a Konsi aprovasse um cadastro depois do login do escritório (sem
+// ele relogar), uma segunda solicitação pro MESMO processo (ex: pedir
+// subsídio depois de já ter pedido uma obrigação) não reconheceria que o
+// processo já existia, caindo de novo em "pedido de cadastro" por engano.
+async function atualizarMapaProcessosEscritorio(){
   const { data: processos } = await sb.from('vw_processos_escritorio').select('*');
   window.__mapaProcessosEscritorio = Object.fromEntries((processos||[]).map(p=>[p.id, p]));
-  await carregarDashboardPortal();
 }
 
 async function carregarDashboardPortal(){
@@ -3074,7 +3084,8 @@ async function adicionarComplementacaoPortal(solicitacaoId, processoId){
   await carregarDashboardPortal();
 }
 
-function abrirNovaObrigacaoPortal(){
+async function abrirNovaObrigacaoPortal(){
+  await atualizarMapaProcessosEscritorio();
   document.getElementById('portal-obg-numero').value = '';
   document.getElementById('portal-obg-nome-autor').value = '';
   document.getElementById('portal-obg-prazo').value = '';
@@ -3140,7 +3151,8 @@ async function criarObrigacaoFazerPortal(){
   await carregarDashboardPortal();
 }
 
-function abrirNovaSolicitacaoPortal(){
+async function abrirNovaSolicitacaoPortal(){
+  await atualizarMapaProcessosEscritorio();
   document.getElementById('portal-novo-numero').value = '';
   document.getElementById('portal-novo-nome-autor').value = '';
   document.querySelectorAll('.portal-tipo-check').forEach(c=>c.checked=false);
