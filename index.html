@@ -685,6 +685,14 @@
       </div>
 
       <div class="panel">
+        <h3>Como a provisão sugerida é calculada</h3>
+        <p style="font-size:12px; color:var(--textSecondary); margin:-8px 0 14px;">
+          Cada processo ativo é provisionado pelo percentual da sua classificação de risco, aplicado sobre uma base. A base é, nesta ordem: (1) a condenação já definida pela Justiça; (2) a média de condenação do tema, quando o tema já tem condenações suficientes; (3) o valor em risco informado. Revisional nunca usa média, e processos só de Superendividamento seguem a regra de risco zerado.
+        </p>
+        <div id="compliance-provisao-detalhe"></div>
+      </div>
+
+      <div class="panel">
         <h3>Processos com maior valor em risco</h3>
         <div class="table-wrap"><table class="table-compact">
           <thead><tr><th>Processo</th><th>Cliente</th><th>Banco</th><th>Motivo</th><th>Operação</th><th>Risco</th><th>Evidências</th><th>Valor em risco</th></tr></thead>
@@ -695,7 +703,7 @@
       <div class="panel">
         <h3>Condenações — valor médio por tribunal e motivo</h3>
         <p style="font-size:12px; color:var(--textSecondary); margin:-8px 0 14px;">
-          Só processos com sentença/acórdão desfavorável e valor de condenação já informado — exceto Revisional (o valor ali costuma ser recálculo de saldo devedor, não indenização por dano moral/material, então não entra nessa média). Não entra no cálculo de provisão sugerida (ainda é só analítico) — com poucos casos, a média pode variar bastante; ganha estabilidade conforme mais processos forem concluídos.
+          Só processos com valor de condenação já informado. Revisional nunca tem média própria (o valor ali costuma ser recálculo de saldo devedor, não indenização); um processo com Revisional e outro motivo, como venda casada, conta apenas no outro tema. Quando um tema chega a <span class="txt-min-condenacoes">20</span> condenações, a média dele passa a alimentar a provisão sugerida (veja o quadro 'Como a provisão sugerida é calculada'); antes disso, é só analítico — com poucos casos a média varia muito.
         </p>
         <div id="compliance-condenacoes"></div>
       </div>
@@ -1144,7 +1152,7 @@
             <div>
               <label>Valor da condenação (R$) <span style="font-weight:400; color:var(--textMuted);">— só se já houver sentença/acórdão desfavorável</span></label>
               <input id="det-valor-condenacao" type="text" inputmode="decimal" placeholder="Ex: 15.000,00">
-              <p class="field-note" style="margin-top:4px;">Diferente do "valor da causa" (que vem do DataJud e é só o valor pedido pelo autor) — aqui é o valor que a Justiça efetivamente definiu. Ainda não entra no cálculo de provisão sugerida — é só analítico, pra mapear média por tribunal e motivo.</p>
+              <p class="field-note" style="margin-top:4px;">Diferente do "valor da causa" (que vem do DataJud e é só o valor pedido pelo autor) — aqui é o valor que a Justiça efetivamente definiu. Esse valor alimenta a provisão sugerida do próprio processo e, junto com os demais, a média de condenação do tema (que passa a valer na provisão a partir de <span class="txt-min-condenacoes">20</span> condenações).</p>
             </div>
           </div>
 
@@ -2478,16 +2486,15 @@ async function carregarCompliance(){
   const valorTotalRisco = ativos.reduce((s,p)=>s+(Number(p.valor_risco)||0),0);
   const criticos = ativos.filter(p=>['ALTO','CRITICO'].includes(p.classificacao_risco)).length;
 
-  const valorProvisionado = ativos.reduce((s,p)=>{
-    const pct = provisionamentoPercentuaisCache[p.classificacao_risco] ?? 0;
-    return s + (Number(p.valor_risco)||0) * (pct/100);
-  }, 0);
+  const provisao = calcularProvisaoSugerida(ativos);
+  const valorProvisionado = provisao.total;
+  renderDetalheProvisao(provisao);
 
   const naoUtilizadas = ativos.filter(p=>p.situacao_evidencias==='COM_EVIDENCIA_NAO_UTILIZADA').length;
 
   document.getElementById('compliance-kpi-cards').innerHTML = `
     <div class="kpi-card" title="Soma do valor em risco de todos os processos ativos"><div><div class="label">Valor total em risco</div><div class="value">${fmtMoney(valorTotalRisco)}</div></div><div class="icon-box">${ICON_COIN}</div></div>
-    <div class="kpi-card alert" title="Estimativa aplicando o percentual de provisionamento de cada classificação de risco sobre o valor em risco. Ajuste os percentuais abaixo."><div><div class="label">Provisão sugerida</div><div class="value">${fmtMoney(valorProvisionado)}</div></div><div class="icon-box">${ICON_SHIELD}</div></div>
+    <div class="kpi-card alert" title="Percentual de cada classificação de risco aplicado sobre a base de cada processo: condenação já definida, ou média de condenação do tema (quando há ao menos ${PROVISAO_MIN_CONDENACOES} condenações), ou valor em risco. Veja o quadro 'Como a provisão é calculada' abaixo."><div><div class="label">Provisão sugerida</div><div class="value">${fmtMoney(valorProvisionado)}</div></div><div class="icon-box">${ICON_SHIELD}</div></div>
     <div class="kpi-card ${criticos>0?'alert':''}" title="Processos ativos com risco Alto ou Crítico"><div><div class="label">Risco alto/crítico</div><div class="value">${criticos}</div></div><div class="icon-box">${ICON_ALERT}</div></div>
     <div class="kpi-card ${naoUtilizadas>0?'alert':''}" title="Enviamos evidência, mas o banco não está usando no processo — clique para ver a lista" style="cursor:pointer;" onclick="irParaProcessosComFiltro('f-evidencias','COM_EVIDENCIA_NAO_UTILIZADA')"><div><div class="label">Evidências não utilizadas pelo banco</div><div class="value">${naoUtilizadas}</div></div><div class="icon-box">${ICON_FOLDER}</div></div>
   `;
@@ -2783,6 +2790,132 @@ async function carregarLogAuditoriaRisco(){
 }
 
 // ---------------- CONDENAÇÕES: VALOR MÉDIO POR TRIBUNAL/MOTIVO ----------------
+// ---------------- PROVISÃO: MÉDIA DE CONDENAÇÃO POR TEMA ----------------
+// Parâmetros da política (mudar aqui muda o cálculo em toda a tela):
+//  - PROVISAO_MIN_CONDENACOES: quantas condenações com valor informado o tema
+//    precisa ter pra a média valer na provisão (abaixo disso, cai no valor em risco).
+//  - PROVISAO_MODO_MEDIA: 'SUBSTITUI' = a média toma o lugar do valor em risco;
+//    'MAIOR' = usa o maior entre o valor em risco e a média.
+//  - PROVISAO_USA_CONDENACAO_REAL: se o processo já tem valor de condenação
+//    definido pela Justiça, esse valor vale mais que qualquer média.
+const PROVISAO_MIN_CONDENACOES = 20;
+const PROVISAO_MODO_MEDIA = 'SUBSTITUI';
+const PROVISAO_USA_CONDENACAO_REAL = true;
+
+function motivosDoProcesso(p){
+  return (p.todosMotivos && p.todosMotivos.length) ? p.todosMotivos : [p.motivo].filter(Boolean);
+}
+// Revisional nunca tem média própria nem usa média (o valor ali costuma ser
+// recálculo de saldo devedor, não indenização). Um processo só entra nas
+// médias se tiver ao menos um motivo que NÃO seja Revisional — e conta
+// somente no(s) outro(s) tema(s).
+function processoElegivelParaMedia(p){
+  return motivosDoProcesso(p).some(m => m !== 'REVISIONAL');
+}
+
+// Média de condenação por tema, sobre todos os processos (ativos e
+// arquivados, exceto "somos parte") com valor de condenação informado.
+function calcularMediasCondenacaoPorTema(){
+  const g = {};
+  processosGerais().forEach(p=>{
+    if(p.valor_condenacao == null || !processoElegivelParaMedia(p)) return;
+    motivosDoProcesso(p).filter(m => m !== 'REVISIONAL').forEach(m=>{
+      g[m] = g[m] || { n:0, total:0 };
+      g[m].n++;
+      g[m].total += Number(p.valor_condenacao) || 0;
+    });
+  });
+  Object.values(g).forEach(d => d.media = d.total / d.n);
+  return g;
+}
+
+// Decide qual valor serve de base pra provisão de UM processo, e por quê.
+// Ordem: condenação real > média do tema (se ≥ mínimo) > valor em risco.
+// Superendividamento como único motivo e processos só de Revisional ficam
+// sempre no valor em risco (a regra de zerar risco do Superendividamento
+// continua valendo).
+function baseProvisaoDoProcesso(p, medias){
+  const valorRisco = Number(p.valor_risco) || 0;
+  const motivos = motivosDoProcesso(p);
+  if(motivos.length && motivos.every(m => m === 'SUPERENDIVIDAMENTO')) return { base: valorRisco, origem:'VALOR_RISCO' };
+  if(!processoElegivelParaMedia(p)) return { base: valorRisco, origem:'VALOR_RISCO' };
+
+  if(PROVISAO_USA_CONDENACAO_REAL && p.valor_condenacao != null){
+    return { base: Number(p.valor_condenacao) || 0, origem:'CONDENACAO_REAL' };
+  }
+  // Mais de um tema qualificado? Usa a maior média (postura conservadora).
+  const candidatos = motivos
+    .filter(m => m !== 'REVISIONAL' && medias[m] && medias[m].n >= PROVISAO_MIN_CONDENACOES)
+    .map(m => ({ tema:m, media: medias[m].media }));
+  if(candidatos.length){
+    const melhor = candidatos.sort((a,b)=>b.media-a.media)[0];
+    const base = PROVISAO_MODO_MEDIA === 'MAIOR' ? Math.max(valorRisco, melhor.media) : melhor.media;
+    return { base, origem:'MEDIA_TEMA', tema: melhor.tema };
+  }
+  return { base: valorRisco, origem:'VALOR_RISCO' };
+}
+
+// Provisão sugerida de uma lista de processos ativos: total pelo critério
+// novo, total pelo critério anterior (só valor em risco — pra comparação),
+// e o detalhamento por origem da base.
+function calcularProvisaoSugerida(ativos){
+  const medias = calcularMediasCondenacaoPorTema();
+  const porOrigem = {
+    CONDENACAO_REAL: { n:0, base:0, provisao:0 },
+    MEDIA_TEMA:      { n:0, base:0, provisao:0 },
+    VALOR_RISCO:     { n:0, base:0, provisao:0 },
+  };
+  let total = 0, totalAnterior = 0;
+  ativos.forEach(p=>{
+    const pct = (provisionamentoPercentuaisCache[p.classificacao_risco] ?? 0) / 100;
+    const { base, origem } = baseProvisaoDoProcesso(p, medias);
+    const provisao = base * pct;
+    total += provisao;
+    totalAnterior += (Number(p.valor_risco)||0) * pct;
+    porOrigem[origem].n++; porOrigem[origem].base += base; porOrigem[origem].provisao += provisao;
+  });
+  return { total, totalAnterior, porOrigem, medias };
+}
+
+function renderDetalheProvisao(prov){
+  document.querySelectorAll('.txt-min-condenacoes').forEach(e => e.textContent = PROVISAO_MIN_CONDENACOES);
+  const el = document.getElementById('compliance-provisao-detalhe');
+  const o = prov.porOrigem;
+  const linha = (rotulo, d, dica) => `
+    <tr>
+      <td>${rotulo}<div style="font-size:10.5px; color:var(--textMuted);">${dica}</div></td>
+      <td>${d.n}</td><td>${fmtMoney(d.base)}</td><td><b>${fmtMoney(d.provisao)}</b></td>
+    </tr>`;
+  const diff = prov.total - prov.totalAnterior;
+  const pctDiff = prov.totalAnterior ? Math.round(diff / prov.totalAnterior * 100) : null;
+  const temasEmUso = Object.entries(prov.medias)
+    .filter(([,d]) => d.n >= PROVISAO_MIN_CONDENACOES)
+    .sort((a,b)=>b[1].n-a[1].n);
+
+  el.innerHTML = `
+    <div class="table-wrap"><table class="table-compact">
+      <thead><tr><th>Base usada</th><th>Processos</th><th>Base somada</th><th>Provisão</th></tr></thead>
+      <tbody>
+        ${linha('Condenação já definida', o.CONDENACAO_REAL, 'valor que a Justiça já fixou no processo')}
+        ${linha('Média de condenação do tema', o.MEDIA_TEMA, `temas com ${PROVISAO_MIN_CONDENACOES}+ condenações informadas`)}
+        ${linha('Valor em risco', o.VALOR_RISCO, 'sem condenação definida e sem média suficiente (inclui Revisional e Superendividamento)')}
+        <tr style="border-top:2px solid var(--borderStrong);">
+          <td><b>Provisão sugerida (critério atual)</b></td>
+          <td>${o.CONDENACAO_REAL.n + o.MEDIA_TEMA.n + o.VALOR_RISCO.n}</td><td></td><td><b>${fmtMoney(prov.total)}</b></td>
+        </tr>
+      </tbody>
+    </table></div>
+    <p class="field-note" style="margin-top:10px;">
+      Pelo critério anterior (só valor em risco × percentual): <b>${fmtMoney(prov.totalAnterior)}</b>.
+      Diferença: <b style="color:${diff>0?'var(--erro)':'var(--sucesso)'};">${diff>0?'+':''}${fmtMoney(diff)}${pctDiff!==null ? ` (${pctDiff>0?'+':''}${pctDiff}%)` : ''}</b>.
+    </p>
+    <p class="field-note">
+      ${temasEmUso.length
+        ? `Médias em uso: ${temasEmUso.map(([t,d])=>`${t} — ${fmtMoney(d.media)} (${d.n} condenações)`).join(' · ')}.`
+        : `Nenhum tema chegou a ${PROVISAO_MIN_CONDENACOES} condenações informadas ainda — por enquanto nenhuma média está influenciando a provisão.`}
+    </p>`;
+}
+
 function renderPainelCondenacoes(){
   const el = document.getElementById('compliance-condenacoes');
   // Revisional fica de fora dessa média de propósito: o valor ali costuma
@@ -2791,8 +2924,7 @@ function renderPainelCondenacoes(){
   // na mesma média distorce o número. A ideia aqui é medir ações
   // indenizatórias convencionais.
   const comCondenacao = processosGerais().filter(p =>
-    p.valor_condenacao != null &&
-    !((p.todosMotivos && p.todosMotivos.length ? p.todosMotivos : [p.motivo]).includes('REVISIONAL'))
+    p.valor_condenacao != null && processoElegivelParaMedia(p)
   );
 
   if(!comCondenacao.length){
@@ -2804,7 +2936,7 @@ function renderPainelCondenacoes(){
     const g = {};
     comCondenacao.forEach(p=>{
       const chaves = campo === 'motivo'
-        ? ((p.todosMotivos && p.todosMotivos.length) ? p.todosMotivos : [p.motivo || '(sem informação)'])
+        ? (motivosDoProcesso(p).filter(m => m !== 'REVISIONAL') || ['(sem informação)'])
         : [p[campo] || '(sem informação)'];
       chaves.forEach(k=>{
         g[k] = g[k] || { n:0, total:0 };
@@ -2829,6 +2961,16 @@ function renderPainelCondenacoes(){
       <td>${fmtMoney(item.media)}</td>
       <td>${fmtMoney(item.total)}</td>
     </tr>`;
+  const linhaTabelaTema = (item) => `
+    <tr>
+      <td>${item.label}</td>
+      <td>${item.n}</td>
+      <td>${fmtMoney(item.media)}</td>
+      <td>${fmtMoney(item.total)}</td>
+      <td>${item.n >= PROVISAO_MIN_CONDENACOES
+        ? '<span class="badge badge-BAIXO">Na provisão</span>'
+        : `<span style="font-size:11px; color:var(--textMuted);">${item.n}/${PROVISAO_MIN_CONDENACOES}</span>`}</td>
+    </tr>`;
 
   el.innerHTML = `
     <div class="cards-row" style="margin-bottom:16px;">
@@ -2847,8 +2989,8 @@ function renderPainelCondenacoes(){
       <div>
         <h4 style="font-size:12.5px; margin:0 0 8px; color:var(--textPrimary);">Por motivo</h4>
         <div class="table-wrap"><table class="table-compact">
-          <thead><tr><th>Motivo</th><th>Qtd.</th><th>Média</th><th>Total</th></tr></thead>
-          <tbody>${porMotivoCond.map(linhaTabela).join('')}</tbody>
+          <thead><tr><th>Motivo</th><th>Qtd.</th><th>Média</th><th>Total</th><th>Provisão</th></tr></thead>
+          <tbody>${porMotivoCond.map(linhaTabelaTema).join('')}</tbody>
         </table></div>
       </div>
     </div>
