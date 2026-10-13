@@ -77,12 +77,13 @@ Deno.serve(async (req) => {
         is_admin: perfilPorId[u.id]?.is_admin || false,
         ativo: perfilPorId[u.id]?.ativo ?? true,
         tipo_usuario: perfilPorId[u.id]?.tipo_usuario || "KONSI",
+        pode_editar_processos: perfilPorId[u.id]?.pode_editar_processos || false,
       }));
       return json({ usuarios: lista }, 200, corsHeaders);
     }
 
     if (action === "criar") {
-      const { email, nome_exibicao, is_admin, tipo_usuario } = body;
+      const { email, nome_exibicao, is_admin, tipo_usuario, pode_editar_processos } = body;
       if (!email || !nome_exibicao) return json({ error: "E-mail e nome são obrigatórios." }, 400, corsHeaders);
       // "ESCRITORIO" nunca pode ser admin — são naturezas de acesso
       // diferentes, e um login de escritório com permissão de admin
@@ -95,6 +96,8 @@ Deno.serve(async (req) => {
       if (error) throw error;
       await admin.from("usuarios_perfil").insert({
         id: novoUsuario.user.id, nome_exibicao, is_admin: tipo === "ESCRITORIO" ? false : !!is_admin, tipo_usuario: tipo,
+        // Escritório nunca tem permissão de editar cadastro de processo.
+        pode_editar_processos: tipo === "ESCRITORIO" ? false : !!pode_editar_processos,
       });
       return json({ ok: true, senha_provisoria: senhaProvisoria }, 200, corsHeaders);
     }
@@ -117,15 +120,38 @@ Deno.serve(async (req) => {
       return json({ ok: true }, 200, corsHeaders);
     }
 
-    // NOVO: alterar se um usuário é administrador (is_admin) — essa é a
-    // única forma de mudar isso, já que o front-end nunca escreve
-    // diretamente nessa coluna (gatilho fn_protege_is_admin bloqueia).
+    // Altera permissões de um usuário: administrador (is_admin) e/ou poder de
+    // editar o cadastro de qualquer processo (pode_editar_processos). Cada
+    // campo só muda se vier na chamada. Essa é a única forma de mudar isso,
+    // já que o front-end nunca escreve nessas colunas (gatilho
+    // fn_protege_is_admin bloqueia).
     if (action === "editar_permissoes") {
-      const { user_id, is_admin } = body;
-      if (user_id === userData.user.id && !is_admin) {
-        return json({ error: "Você não pode remover sua própria permissão de administrador por aqui." }, 400, corsHeaders);
+      const { user_id, is_admin, pode_editar_processos } = body;
+      const mudancas: Record<string, boolean> = {};
+
+      // Login de escritório nunca pode ser administrador nem editar cadastro
+      // de processo — são naturezas de acesso diferentes.
+      const { data: alvo } = await admin.from("usuarios_perfil").select("tipo_usuario").eq("id", user_id).single();
+      const alvoEscritorio = alvo?.tipo_usuario === "ESCRITORIO";
+
+      if (is_admin !== undefined) {
+        if (user_id === userData.user.id && !is_admin) {
+          return json({ error: "Você não pode remover sua própria permissão de administrador por aqui." }, 400, corsHeaders);
+        }
+        if (alvoEscritorio && is_admin) {
+          return json({ error: "Login de escritório não pode ser administrador." }, 400, corsHeaders);
+        }
+        mudancas.is_admin = !!is_admin;
       }
-      const { error } = await admin.from("usuarios_perfil").update({ is_admin: !!is_admin }).eq("id", user_id);
+      if (pode_editar_processos !== undefined) {
+        if (alvoEscritorio && pode_editar_processos) {
+          return json({ error: "Login de escritório não pode ter permissão de editar cadastro de processos." }, 400, corsHeaders);
+        }
+        mudancas.pode_editar_processos = !!pode_editar_processos;
+      }
+      if (!Object.keys(mudancas).length) return json({ error: "Nenhuma permissão informada." }, 400, corsHeaders);
+
+      const { error } = await admin.from("usuarios_perfil").update(mudancas).eq("id", user_id);
       if (error) throw error;
       return json({ ok: true }, 200, corsHeaders);
     }
