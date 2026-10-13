@@ -545,17 +545,6 @@
         </div>
       </div>
 
-      <!-- ---------- MODAL: DRILL-DOWN GENÉRICO (clique em qualquer fatia dos gráficos) ---------- -->
-      <div class="modal-overlay" id="modal-drilldown">
-        <div class="modal wide">
-          <div class="modal-head"><h3 id="drill-titulo">Detalhamento</h3><button onclick="closeModal('modal-drilldown')">✕</button></div>
-          <p id="drill-subtitulo" style="font-size:12px; color:var(--textSecondary); margin:-8px 0 14px;"></p>
-          <div class="table-wrap"><table id="tbl-drilldown">
-            <thead></thead>
-            <tbody></tbody>
-          </table></div>
-        </div>
-      </div>
       <div class="panel">
         <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:10px;">
           <div>
@@ -840,7 +829,7 @@
       </div>
       <div class="panel">
         <div class="table-wrap"><table id="tbl-usuarios">
-          <thead><tr><th>Nome</th><th>E-mail</th><th>Tipo</th><th>Administrador</th><th>Status</th><th></th></tr></thead>
+          <thead><tr><th>Nome</th><th>E-mail</th><th>Tipo</th><th>Administrador</th><th>Edita cadastro</th><th>Status</th><th></th></tr></thead>
           <tbody></tbody>
         </table></div>
       </div>
@@ -976,6 +965,18 @@
       <button class="btn-secondary" onclick="fecharImportarCsv()">Cancelar</button>
       <button class="btn-primary" style="width:auto" id="csv-btn-confirmar" onclick="confirmarImportacaoCsv()" disabled>Importar processos válidos</button>
     </div>
+  </div>
+</div>
+
+<!-- ============ MODAL: DRILL-DOWN GENÉRICO (fora das seções, pra aparecer em qualquer aba) ============ -->
+      <div class="modal-overlay" id="modal-drilldown">
+  <div class="modal wide">
+    <div class="modal-head"><h3 id="drill-titulo">Detalhamento</h3><button onclick="closeModal('modal-drilldown')">✕</button></div>
+    <p id="drill-subtitulo" style="font-size:12px; color:var(--textSecondary); margin:-8px 0 14px;"></p>
+    <div class="table-wrap"><table id="tbl-drilldown">
+      <thead></thead>
+      <tbody></tbody>
+    </table></div>
   </div>
 </div>
 
@@ -1261,11 +1262,12 @@
     <label>Nome</label><input id="nu-nome" placeholder="Nome exibido no sistema">
     <label>E-mail</label><input id="nu-email" type="email" placeholder="pessoa@konsi.com.br">
     <label>Tipo de login</label>
-    <select id="nu-tipo" onchange="document.getElementById('nu-admin-wrap').style.display = this.value==='ESCRITORIO' ? 'none' : 'flex';">
+    <select id="nu-tipo" onchange="const esc=this.value==='ESCRITORIO'; document.getElementById('nu-admin-wrap').style.display = esc ? 'none' : 'flex'; document.getElementById('nu-edita-wrap').style.display = esc ? 'none' : 'flex';">
       <option value="KONSI">Konsi (acesso normal ao sistema)</option>
       <option value="ESCRITORIO">Escritório externo (só o Portal de Subsídios, sem acesso ao resto do sistema)</option>
     </select>
     <label id="nu-admin-wrap" style="display:flex; align-items:center; gap:8px; text-transform:none;"><input type="checkbox" id="nu-admin" style="width:auto; margin:0;"> É administrador (pode gerenciar outros usuários)</label>
+    <label id="nu-edita-wrap" style="display:flex; align-items:center; gap:8px; text-transform:none;"><input type="checkbox" id="nu-edita" style="width:auto; margin:0;"> Pode editar o cadastro de qualquer processo</label>
     <div class="form-actions">
       <button class="btn-secondary" onclick="closeModal('modal-novo-usuario')">Cancelar</button>
       <button class="btn-primary" style="width:auto" onclick="criarUsuario()">Criar usuário</button>
@@ -1288,6 +1290,7 @@ const FN_SYNC_DJEN = `${SUPABASE_URL}/functions/v1/sync-djen`;
 
 let currentUser = null;
 let currentUserIsAdmin = false;
+let currentUserPodeEditarProcessos = false; // admin ou com a caixinha marcada na aba Usuários
 let processosCache = [];
 let processoAtualId = null;
 let paginaProcessosAtual = 1;
@@ -1324,7 +1327,7 @@ async function doLogout(){ await sb.auth.signOut(); location.reload(); }
 
 async function afterLogin(){
   document.getElementById('login-screen').style.display='none';
-  const { data: perfil } = await sb.from('usuarios_perfil').select('nome_exibicao, is_admin, tipo_usuario').eq('id', currentUser.id).single();
+  const { data: perfil } = await sb.from('usuarios_perfil').select('nome_exibicao, is_admin, tipo_usuario, pode_editar_processos').eq('id', currentUser.id).single();
 
   // Login do escritório externo: tela completamente separada, nunca carrega
   // nada do sistema normal da Konsi (menu, dashboard, processos...) — a
@@ -1340,6 +1343,7 @@ async function afterLogin(){
   document.getElementById('app').style.display='block';
   document.getElementById('user-name').textContent = perfil ? perfil.nome_exibicao : currentUser.email;
   currentUserIsAdmin = !!perfil?.is_admin;
+  currentUserPodeEditarProcessos = currentUserIsAdmin || !!perfil?.pode_editar_processos;
   document.getElementById('nav-usuarios').style.display = currentUserIsAdmin ? 'inline-block' : 'none';
   await carregarUsuariosAtivos();
   await carregarTudo();
@@ -4719,10 +4723,10 @@ async function abrirDetalhe(id, rolarParaSubsidios){
   document.getElementById('det-btn-excluir').style.display = currentUserIsAdmin ? 'inline-block' : 'none';
   document.getElementById('det-nova-tarefa-wrap').style.display = currentUserIsAdmin ? 'block' : 'none';
 
-  // Não-admin só edita se tiver uma tarefa aberta designada a ele pra ESTE
-  // processo (mesma regra aplicada no banco via RLS — aqui é só pra não
+  // Quem não é admin nem tem a permissão de edição marcada só edita se tiver uma
+  // tarefa aberta designada a ele pra ESTE processo (mesma regra aplicada no banco via RLS — aqui é só pra não
   // mostrar um botão que ia dar erro de permissão ao clicar).
-  if(currentUserIsAdmin){
+  if(currentUserPodeEditarProcessos){
     document.getElementById('det-btn-editar').style.display = 'inline-block';
   } else {
     const { data: tarefaMinha } = await sb.from('tarefas_acompanhamento')
@@ -5002,7 +5006,7 @@ async function concluirTarefa(tarefaId, processoId){
 // ---------------- USUÁRIOS (admin) ----------------
 async function carregarUsuarios(){
   const tbody = document.querySelector('#tbl-usuarios tbody');
-  tbody.innerHTML = `<tr><td colspan="5"><div class="empty-state">Carregando...</div></td></tr>`;
+  tbody.innerHTML = `<tr><td colspan="7"><div class="empty-state">Carregando...</div></td></tr>`;
   try{
     const { usuarios } = await chamarAdminUsuarios({ action:'listar' });
     tbody.innerHTML = usuarios.length ? usuarios.map(u=>`
@@ -5011,16 +5015,18 @@ async function carregarUsuarios(){
         <td>${u.email}</td>
         <td>${u.tipo_usuario==='ESCRITORIO' ? '<span class="badge-robo">Escritório</span>' : 'Konsi'}</td>
         <td>${u.is_admin ? 'Sim' : 'Não'}</td>
+        <td>${u.tipo_usuario==='ESCRITORIO' ? '—' : (u.is_admin ? 'Sim (admin)' : (u.pode_editar_processos ? 'Sim' : 'Só com tarefa'))}</td>
         <td><span class="badge ${u.ativo && !u.banido ? 'badge-BAIXO' : 'badge-ATRASADA'}">${u.ativo && !u.banido ? 'Ativo' : 'Desativado'}</span></td>
         <td style="white-space:nowrap;">
           <button class="btn-ghost" onclick="redefinirSenhaUsuario('${u.id}')">Redefinir senha</button>
           <button class="btn-ghost" onclick="alterarStatusUsuario('${u.id}', ${!(u.ativo && !u.banido)})">${u.ativo && !u.banido ? 'Desativar' : 'Reativar'}</button>
-          <button class="btn-ghost" onclick="alterarPermissoesUsuario('${u.id}', ${!u.is_admin})">${u.is_admin ? 'Remover admin' : 'Tornar admin'}</button>
+          ${u.tipo_usuario==='ESCRITORIO' ? '' : `<button class="btn-ghost" onclick="alterarPermissoesUsuario('${u.id}', ${!u.is_admin})">${u.is_admin ? 'Remover admin' : 'Tornar admin'}</button>`}
+          ${u.tipo_usuario==='ESCRITORIO' || u.is_admin ? '' : `<button class="btn-ghost" onclick="alterarEdicaoProcessosUsuario('${u.id}', ${!u.pode_editar_processos})">${u.pode_editar_processos ? 'Retirar edição' : 'Permitir edição'}</button>`}
           <button class="btn-ghost" style="color:var(--erro);" onclick="excluirUsuario('${u.id}')">Excluir</button>
         </td>
-      </tr>`).join('') : `<tr><td colspan="5">${emptyState('Nenhum usuário cadastrado ainda', '')}</td></tr>`;
+      </tr>`).join('') : `<tr><td colspan="7">${emptyState('Nenhum usuário cadastrado ainda', '')}</td></tr>`;
   }catch(e){
-    tbody.innerHTML = `<tr><td colspan="5"><div class="empty-state">${e.message}</div></td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="7"><div class="empty-state">${e.message}</div></td></tr>`;
   }
 }
 
@@ -5029,11 +5035,12 @@ async function criarUsuario(){
   const email = document.getElementById('nu-email').value.trim();
   const is_admin = document.getElementById('nu-admin').checked;
   const tipo_usuario = document.getElementById('nu-tipo').value;
+  const pode_editar_processos = tipo_usuario==='KONSI' && document.getElementById('nu-edita').checked;
   if(!nome_exibicao || !email){ toast('Preencha nome e e-mail.'); return; }
   try{
-    const { senha_provisoria } = await chamarAdminUsuarios({ action:'criar', email, nome_exibicao, is_admin, tipo_usuario });
+    const { senha_provisoria } = await chamarAdminUsuarios({ action:'criar', email, nome_exibicao, is_admin, tipo_usuario, pode_editar_processos });
     closeModal('modal-novo-usuario');
-    document.getElementById('nu-nome').value=''; document.getElementById('nu-email').value=''; document.getElementById('nu-admin').checked=false; document.getElementById('nu-tipo').value='KONSI';
+    document.getElementById('nu-nome').value=''; document.getElementById('nu-email').value=''; document.getElementById('nu-admin').checked=false; document.getElementById('nu-edita').checked=false; document.getElementById('nu-tipo').value='KONSI'; document.getElementById('nu-admin-wrap').style.display='flex'; document.getElementById('nu-edita-wrap').style.display='flex';
     alert(`Usuário criado.\nE-mail: ${email}\nSenha provisória: ${senha_provisoria}\n\nRepasse essa senha pra pessoa — ela pode trocar depois em "Esqueci minha senha".`);
     await carregarUsuarios();
   }catch(e){ toast('Erro: '+e.message); }
@@ -5062,6 +5069,17 @@ async function alterarPermissoesUsuario(user_id, is_admin){
   try{
     await chamarAdminUsuarios({ action:'editar_permissoes', user_id, is_admin });
     toast('Permissões atualizadas.');
+    await carregarUsuarios();
+  }catch(e){ toast('Erro: '+e.message); }
+}
+
+async function alterarEdicaoProcessosUsuario(user_id, pode_editar_processos){
+  if(!confirm(pode_editar_processos
+    ? 'Permitir que este usuário edite o cadastro de QUALQUER processo?'
+    : 'Retirar a permissão de editar cadastro? Ele ainda poderá editar os processos em que tiver tarefa aberta designada a ele.')) return;
+  try{
+    await chamarAdminUsuarios({ action:'editar_permissoes', user_id, pode_editar_processos });
+    toast('Permissão atualizada.');
     await carregarUsuarios();
   }catch(e){ toast('Erro: '+e.message); }
 }
