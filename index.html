@@ -3464,7 +3464,7 @@ async function criarObrigacaoFazerPortal(){
 
   // Já sobe a decisão judicial anexada na hora — é obrigatória nesse tipo
   // de solicitação, não faz sentido deixar pendente.
-  const caminho = `${novoItem.id}/${Date.now()}-${arquivo.name}`;
+  const caminho = `${novoItem.id}/${Date.now()}-${nomeSeguroArquivo(arquivo.name)}`;
   const { error: erroUpload } = await sb.storage.from('subsidios').upload(caminho, arquivo);
   if(erroUpload){ toast('Obrigação registrada, mas o upload da decisão falhou: '+erroUpload.message); await carregarDashboardPortal(); closeModal('modal-portal-nova-obrigacao'); return; }
   const { data: marcado, error: erroMarcar } = await sb.from('solicitacao_subsidio_itens')
@@ -3565,6 +3565,20 @@ async function baixarDocumentoPortal(storagePath){
 }
 
 // ---------------- SUBSÍDIOS (processos em que a Konsi é parte) ----------------
+// O Storage recusa ("Invalid key") nomes com acento, espaço e símbolos. A CHAVE
+// interna do arquivo usa um nome limpo; o nome ORIGINAL continua salvo em
+// nome_arquivo e é o que as pessoas veem na tela.
+function nomeSeguroArquivo(nome){
+  const partes = String(nome||'').split('.');
+  const ext = partes.length > 1 ? '.' + partes.pop().toLowerCase().replace(/[^a-z0-9]/g,'') : '';
+  const base = partes.join('.')
+    .normalize('NFD').replace(/[\u0300-\u036f]/g,'')   // tira acentos
+    .replace(/[^A-Za-z0-9._-]+/g,'_')                    // espaço e símbolos viram _
+    .replace(/_+/g,'_').replace(/^[_.]+|[_.]+$/g,'')
+    .slice(0,80);
+  return (base || 'arquivo') + (ext === '.' ? '' : ext);
+}
+
 const LABEL_TIPO_SUBSIDIO = {
   CONTRATO: 'Contrato',
   HISTORICO_CONVERSAS: 'Histórico de conversas',
@@ -3649,7 +3663,7 @@ async function marcarObrigacaoCumprida(solicitacaoId){
       solicitacao_id: solicitacaoId, processo_id: processoAtualId, tipo_documento: 'COMPROVANTE_CUMPRIMENTO',
     }).select('id').single();
     if(erroItem){ toast('Erro ao registrar o comprovante: '+erroItem.message); return; }
-    const caminho = `${novoItem.id}/${Date.now()}-${arquivo.name}`;
+    const caminho = `${novoItem.id}/${Date.now()}-${nomeSeguroArquivo(arquivo.name)}`;
     const { error: erroUpload } = await sb.storage.from('subsidios').upload(caminho, arquivo);
     if(erroUpload){ toast('Erro ao enviar o comprovante: '+erroUpload.message); return; }
     await sb.from('solicitacao_subsidio_itens').update({ status:'ANEXADO', storage_path: caminho, nome_arquivo: arquivo.name }).eq('id', novoItem.id);
@@ -3748,7 +3762,7 @@ async function processarUploadSubsidio(event){
   if(!itemId) return;
   if(arquivo.size > 50*1024*1024){ toast('Arquivo maior que 50MB — o limite do plano atual é esse.'); return; }
   toast('Enviando documento...');
-  const caminho = `${itemId}/${Date.now()}-${arquivo.name}`;
+  const caminho = `${itemId}/${Date.now()}-${nomeSeguroArquivo(arquivo.name)}`;
   const { error: erroUpload } = await sb.storage.from('subsidios').upload(caminho, arquivo);
   if(erroUpload){ toast('Erro ao enviar: '+erroUpload.message); return; }
   const { error } = await sb.from('solicitacao_subsidio_itens')
