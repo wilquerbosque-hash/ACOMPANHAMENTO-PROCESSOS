@@ -102,6 +102,10 @@
     .user-chip span{ display:none; } /* nome do usuário some, some espaço; "Sair" continua visível */
   }
   .user-chip button{ color:var(--textSecondary); text-decoration:underline; background:none; font-size:12px; }
+  .user-chip .btn-push{ text-decoration:none; border:1px solid var(--border,#d0d7d5); border-radius:14px; padding:4px 10px; font-size:12px; min-height:32px; }
+  .user-chip .btn-push.ativo{ background:#E6F6F2; border-color:#0A9F82; color:#04513F; }
+  .user-chip .btn-push span{ display:inline; } /* anula a regra que esconde spans do chip no celular */
+  @media (max-width:640px){ .user-chip .btn-push .btn-push-txt{ display:none; } }
 
   main{ max-width:1600px; margin:0 auto; padding:28px; }
   .view{ display:none; }
@@ -492,6 +496,7 @@
     </nav>
     <div class="user-chip">
       <span id="user-name">—</span>
+      <button id="btn-push" class="btn-push" onclick="alternarNotificacoes()" title="Notificações no aparelho" style="display:none;">🔔 <span class="btn-push-txt">Notificações</span></button>
       <button onclick="doLogout()">Sair</button>
     </div>
   </header>
@@ -1357,6 +1362,97 @@ async function afterLogin(){
   await carregarTudo();
   sincronizarComDatajud(); // dispara em segundo plano, não trava a tela de login
   sincronizarComDjen(); // idem — independente, não trava se o DJEN falhar
+  iniciarNotificacoes();
+  abrirDeepLinkDaUrl();
+}
+
+// ---------------- NOTIFICAÇÕES PUSH ----------------
+const VAPID_PUBLIC_KEY = 'BCzNIu-ASCS0MwtjkEAbX-isq5z7Vktdg38SJu2t_6gbMHhUEuAfZUTEsDSq1xFOXCz0YyEufTTzWn2JsjY1QGc';
+const FN_ENVIAR_PUSH = `${SUPABASE_URL}/functions/v1/enviar-push`;
+
+function pushSuportado(){ return 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window; }
+function appInstalado(){ return window.navigator.standalone === true || window.matchMedia('(display-mode: standalone)').matches; }
+function ehIOS(){ return /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform==='MacIntel' && navigator.maxTouchPoints>1); }
+function b64ParaUint8(b64){
+  const pad = '='.repeat((4 - b64.length % 4) % 4);
+  const raw = atob((b64 + pad).replace(/-/g,'+').replace(/_/g,'/'));
+  return Uint8Array.from([...raw].map(c=>c.charCodeAt(0)));
+}
+async function subscricaoAtual(){
+  try{ const reg = await navigator.serviceWorker.ready; return await reg.pushManager.getSubscription(); }catch(e){ return null; }
+}
+async function atualizarBotaoPush(){
+  const btn = document.getElementById('btn-push'); if(!btn) return;
+  btn.style.display = 'inline-flex';
+  const sub = pushSuportado() ? await subscricaoAtual() : null;
+  const ativo = !!sub && Notification.permission === 'granted';
+  btn.classList.toggle('ativo', ativo);
+  btn.querySelector('.btn-push-txt').textContent = ativo ? 'Notificações ativas' : 'Ativar notificações';
+  btn.title = ativo ? 'Notificações ativas neste aparelho (toque para desativar)' : 'Ativar notificações neste aparelho';
+}
+async function iniciarNotificacoes(){
+  await atualizarBotaoPush();
+  // Se já estava ativo, renova o registro silenciosamente (mantém o aparelho vinculado a quem está logado)
+  if(pushSuportado() && Notification.permission === 'granted'){
+    const sub = await subscricaoAtual();
+    if(sub) await registrarSubscricao(sub);
+  }
+  if('serviceWorker' in navigator){
+    navigator.serviceWorker.addEventListener('message', (ev)=>{
+      if(ev.data && ev.data.tipo === 'abrir-url') abrirDeepLinkDaUrl(ev.data.url);
+    });
+  }
+}
+async function registrarSubscricao(sub){
+  const j = sub.toJSON();
+  const { error } = await sb.rpc('fn_registrar_push', {
+    p_endpoint: j.endpoint, p_p256dh: j.keys.p256dh, p_auth: j.keys.auth, p_ua: navigator.userAgent.slice(0,200)
+  });
+  if(error) throw error;
+}
+async function alternarNotificacoes(){
+  if(!pushSuportado() || (ehIOS() && !appInstalado())){
+    alert(ehIOS()
+      ? 'No iPhone/iPad as notificações só funcionam com o sistema instalado na Tela de Início:\n\n1. Abra este site no Safari\n2. Toque em Compartilhar (quadrado com seta)\n3. "Adicionar à Tela de Início"\n4. Abra o app pelo ícone e toque em "Ativar notificações"\n\nRequer iOS 16.4 ou superior.'
+      : 'Este navegador não suporta notificações. Use o Chrome (Android/computador) ou instale o app pela opção "Adicionar à tela inicial".');
+    return;
+  }
+  const atual = await subscricaoAtual();
+  if(atual){ // desativar
+    if(!confirm('Desativar as notificações neste aparelho?')) return;
+    try{
+      await sb.from('push_subscriptions').delete().eq('endpoint', atual.endpoint);
+      await atual.unsubscribe();
+    }catch(e){ console.warn(e); }
+    toast('Notificações desativadas neste aparelho.');
+    return atualizarBotaoPush();
+  }
+  try{
+    const perm = await Notification.requestPermission(); // precisa ser a partir do toque do usuário
+    if(perm !== 'granted'){ toast('Permissão negada. Libere as notificações nas configurações do navegador/app.'); return atualizarBotaoPush(); }
+    const reg = await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.subscribe({ userVisibleOnly:true, applicationServerKey: b64ParaUint8(VAPID_PUBLIC_KEY) });
+    await registrarSubscricao(sub);
+    toast('Notificações ativadas! Enviando um aviso de teste…');
+    const { data:{ session } } = await sb.auth.getSession();
+    fetch(FN_ENVIAR_PUSH, { method:'POST', headers:{ 'Authorization':`Bearer ${session.access_token}`, 'Content-Type':'application/json' }, body: JSON.stringify({ acao:'teste' }) }).catch(()=>{});
+  }catch(e){
+    console.error(e);
+    toast('Não foi possível ativar as notificações: ' + (e.message || e));
+  }
+  atualizarBotaoPush();
+}
+// Abre o processo indicado em ?processo=<id> (link das notificações)
+async function abrirDeepLinkDaUrl(urlStr){
+  try{
+    const u = new URL(urlStr || location.href, location.href);
+    const id = u.searchParams.get('processo');
+    if(!id) return;
+    if(!urlStr) history.replaceState(null, '', location.pathname); // limpa a URL ao abrir pelo link
+    showView('processos');
+    if(!processosCache.find(x=>x.id===id)) await carregarTudo();
+    if(processosCache.find(x=>x.id===id)) await abrirDetalhe(id);
+  }catch(e){ console.warn('Deep link não aberto:', e); }
 }
 
 // Lista de usuários ativos, usada para preencher os seletores de
