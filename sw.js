@@ -37,3 +37,36 @@ self.addEventListener('fetch', (event) => {
   }
   // demais requisições: comportamento padrão do navegador (rede), sem interceptar.
 });
+
+// ---------------- NOTIFICAÇÕES PUSH ----------------
+// Chegam do servidor (função enviar-push) mesmo com o app fechado.
+self.addEventListener('push', (event) => {
+  let dados = {};
+  try { dados = event.data ? event.data.json() : {}; } catch (e) { dados = { title: 'Konsi Jurídico', body: event.data ? event.data.text() : '' }; }
+  const titulo = dados.title || 'Konsi Jurídico';
+  event.waitUntil(self.registration.showNotification(titulo, {
+    body: dados.body || '',
+    icon: './icons/icon-192.png',
+    badge: './icons/icon-192.png',
+    tag: dados.tag || undefined,
+    data: { url: dados.url || './index.html' },
+  }));
+});
+
+// Ao tocar: foca o app se já estiver aberto (e manda abrir o processo),
+// senão abre o app já no processo.
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const alvo = new URL((event.notification.data && event.notification.data.url) || './index.html', self.registration.scope).href;
+  event.waitUntil((async () => {
+    const janelas = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    for (const j of janelas) {
+      if (j.url.startsWith(self.registration.scope)) {
+        await j.focus();
+        j.postMessage({ tipo: 'abrir-url', url: alvo });
+        return;
+      }
+    }
+    await self.clients.openWindow(alvo);
+  })());
+});
