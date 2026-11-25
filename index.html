@@ -575,7 +575,40 @@
     <section id="view-metricas" class="view">
       <div class="page-head">
         <div><h2>Métricas mensais</h2><p>Volume de operações, produção e quanto disso já foi contestado em ações judiciais, mês a mês</p></div>
-        <button class="btn-secondary" onclick="abrirNovoMes()">+ Registrar mês</button>
+        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+          <button class="btn-secondary" onclick="abrirImportarProducao()">⬆ Importar planilha de contratos pagos</button>
+          <button class="btn-secondary" onclick="abrirNovoMes()">+ Registrar mês</button>
+        </div>
+      </div>
+      <div id="painel-importar-producao" style="display:none;" class="panel">
+        <h3 style="margin-top:0;">Importar planilha de Contratos Pagos</h3>
+        <div class="field-note" style="margin:0 0 12px;">
+          🔒 A planilha é lida <b>somente no seu navegador</b>: ela <b>não é enviada nem salva</b> em lugar nenhum.
+          Só os totais por mês (nº de contratos e produção bruta) são gravados no sistema, depois que você confirmar.
+        </div>
+        <div class="form-row">
+          <div><label>Arquivo(s) CSV do relatório</label><input id="ip-arquivo" type="file" accept=".csv" multiple onchange="lerPlanilhaProducao()"></div>
+          <div><label>Coluna de data (define o mês)</label>
+            <select id="ip-campo-data" onchange="lerPlanilhaProducao()">
+              <option value="Data de Pagamento" selected>Data de Pagamento</option>
+              <option value="Data da Digitação do Contrato no Banco">Data da Digitação do Contrato no Banco</option>
+              <option value="Data da Digitação do Contrato no Sistema">Data da Digitação do Contrato no Sistema</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-row single">
+          <div><label>Codificação do arquivo</label>
+            <select id="ip-encoding" onchange="lerPlanilhaProducao()">
+              <option value="ISO-8859-1" selected>ISO-8859-1 / Windows-1252 (padrão de export do sistema)</option>
+              <option value="UTF-8">UTF-8</option>
+            </select>
+          </div>
+        </div>
+        <div id="ip-resultado"></div>
+        <div class="form-actions">
+          <button class="btn-secondary" onclick="fecharImportarProducao()">Cancelar</button>
+          <button class="btn-primary" id="ip-btn-gravar" style="width:auto; display:none;" onclick="gravarProducaoImportada()">Gravar no sistema</button>
+        </div>
       </div>
       <div id="form-novo-mes" style="display:none;" class="panel">
         <div class="form-row">
@@ -4127,6 +4160,130 @@ async function salvarMetricaMensal(){
   if(error){ toast('Erro: '+error.message); return; }
   toast('Mês salvo.');
   fecharNovoMes();
+  await carregarMetricas();
+}
+
+// ---------------- IMPORTAR PLANILHA DE CONTRATOS PAGOS ----------------
+// A planilha nunca sai do navegador: o PapaParse lê linha a linha (modo "step"),
+// somando só contagem e produção por mês — as linhas (que têm dados de clientes)
+// não são guardadas nem enviadas. Só os totais por mês vão ao banco, após confirmação.
+let importProducao = { resumo:{}, ignoradas:0, status:{}, colunasFaltando:[] };
+
+function abrirImportarProducao(){ document.getElementById('painel-importar-producao').style.display='block'; }
+function fecharImportarProducao(){
+  importProducao = { resumo:{}, ignoradas:0, status:{}, colunasFaltando:[] };
+  document.getElementById('ip-arquivo').value = '';
+  document.getElementById('ip-resultado').innerHTML = '';
+  document.getElementById('ip-btn-gravar').style.display = 'none';
+  document.getElementById('painel-importar-producao').style.display = 'none';
+}
+function valorBRPlanilha(s){
+  if(s==null) return 0;
+  s = String(s).trim(); if(!s) return 0;
+  const n = parseFloat(s.replace(/\./g,'').replace(',', '.'));
+  return isNaN(n) ? 0 : n;
+}
+function mesDaDataBR(str){
+  const m = String(str||'').trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  return m ? `${m[3]}-${m[2].padStart(2,'0')}` : null;
+}
+function escHtmlIp(t){ return String(t).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+function lerUmArquivoProducao(arquivo, campoData, encoding){
+  return new Promise((resolve)=>{
+    let cabecalhoChecado = false;
+    Papa.parse(arquivo, {
+      header:true, skipEmptyLines:true, encoding,
+      step: (res)=>{
+        if(!cabecalhoChecado){
+          cabecalhoChecado = true;
+          const campos = res.meta.fields || [];
+          ['Produção Bruta', campoData].forEach(c=>{
+            if(!campos.includes(c) && !importProducao.colunasFaltando.includes(c)) importProducao.colunasFaltando.push(c);
+          });
+        }
+        const linha = res.data;
+        const status = (linha['Status do Contrato']||'').trim();
+        importProducao.status[status] = (importProducao.status[status]||0)+1;
+        const mes = mesDaDataBR(linha[campoData]);
+        if(!mes){ importProducao.ignoradas++; return; }
+        const r = importProducao.resumo[mes] = importProducao.resumo[mes] || { contratos:0, producao:0 };
+        r.contratos++;
+        r.producao += valorBRPlanilha(linha['Produção Bruta']);
+      },
+      complete: ()=> resolve(),
+      error: ()=> resolve()
+    });
+  });
+}
+
+async function lerPlanilhaProducao(){
+  const arquivos = [...document.getElementById('ip-arquivo').files];
+  const alvo = document.getElementById('ip-resultado');
+  const btn = document.getElementById('ip-btn-gravar');
+  btn.style.display = 'none';
+  if(!arquivos.length){ alvo.innerHTML=''; return; }
+  importProducao = { resumo:{}, ignoradas:0, status:{}, colunasFaltando:[] };
+  alvo.innerHTML = '<div class="field-note">Lendo o arquivo…</div>';
+  const campoData = document.getElementById('ip-campo-data').value;
+  const encoding = document.getElementById('ip-encoding').value;
+  for(const a of arquivos) await lerUmArquivoProducao(a, campoData, encoding);
+
+  if(importProducao.colunasFaltando.length){
+    alvo.innerHTML = `<div class="banner-aviso">Não encontrei a(s) coluna(s): <b>${importProducao.colunasFaltando.map(escHtmlIp).join(', ')}</b>. Confira se é o relatório de Contratos Pagos e se a codificação está correta.</div>`;
+    return;
+  }
+  const meses = Object.keys(importProducao.resumo).sort();
+  if(!meses.length){
+    alvo.innerHTML = '<div class="banner-aviso">Nenhuma linha com data válida (DD/MM/AAAA) na coluna escolhida.</div>';
+    return;
+  }
+  const totalC = meses.reduce((t,m)=>t+importProducao.resumo[m].contratos,0);
+  const totalP = meses.reduce((t,m)=>t+importProducao.resumo[m].producao,0);
+  const linhas = meses.map(m=>{
+    const r = importProducao.resumo[m];
+    const atual = (metricasCache||[]).find(x=>x.competencia.slice(0,7)===m);
+    let situacao = '<span style="color:var(--textSecondary)">novo mês</span>';
+    if(atual){
+      const menor = (atual.total_operacoes||0) > r.contratos;
+      situacao = `substitui: ${Number(atual.total_operacoes||0).toLocaleString('pt-BR')} contratos / ${fmtMoney(atual.total_producao_bruta||0)}` +
+        (menor ? ' <b style="color:var(--alerta)">⚠ o valor novo é MENOR (arquivo parcial?)</b>' : '');
+    }
+    return `<tr><td>${fmtMesAno(m+'-01')}</td><td>${r.contratos.toLocaleString('pt-BR')}</td><td>${fmtMoney(r.producao)}</td><td>${situacao}</td></tr>`;
+  }).join('');
+  const fora = Object.entries(importProducao.status).filter(([s])=>s.toLowerCase()!=='pago');
+  let avisos = '';
+  if(importProducao.ignoradas) avisos += `<div class="banner-aviso">${importProducao.ignoradas} linha(s) ignorada(s) por não ter data válida na coluna escolhida.</div>`;
+  if(fora.length) avisos += `<div class="banner-aviso">Há status diferentes de "pago": ${fora.map(([s,n])=>`"${escHtmlIp(s||'(vazio)')}" (${n})`).join(', ')}. Todas as linhas foram somadas — confira se é o esperado.</div>`;
+  alvo.innerHTML = `
+    <div class="table-wrap"><table>
+      <thead><tr><th>Mês</th><th>Contratos</th><th>Produção bruta</th><th>Situação no sistema</th></tr></thead>
+      <tbody>${linhas}<tr><td><b>Total</b></td><td><b>${totalC.toLocaleString('pt-BR')}</b></td><td><b>${fmtMoney(totalP)}</b></td><td></td></tr></tbody>
+    </table></div>${avisos}
+    <div class="field-note">Confira os valores acima. Ao gravar, cada mês listado é criado ou substituído.</div>`;
+  btn.style.display = 'inline-block';
+}
+
+async function gravarProducaoImportada(){
+  const meses = Object.keys(importProducao.resumo).sort();
+  if(!meses.length) return;
+  if(!confirm(`Gravar ${meses.length} mês(es) no sistema? Meses que já existem serão substituídos.`)) return;
+  const btn = document.getElementById('ip-btn-gravar'); btn.disabled = true;
+  const erros = [];
+  for(const m of meses){
+    const r = importProducao.resumo[m];
+    const { error } = await sb.from('metricas_mensais').upsert({
+      competencia: m+'-01', total_operacoes: r.contratos,
+      total_producao_bruta: Math.round(r.producao*100)/100,
+      total_contestadas: contarJudicializadasNoMes(m),
+      atualizado_por: currentUser.id
+    }, { onConflict:'competencia' });
+    if(error) erros.push(`${m}: ${error.message}`);
+  }
+  btn.disabled = false;
+  if(erros.length){ toast('Alguns meses não foram gravados: '+erros.join(' | ')); }
+  else { toast(`${meses.length} mês(es) gravado(s). A planilha não foi guardada.`); }
+  fecharImportarProducao();
   await carregarMetricas();
 }
 
